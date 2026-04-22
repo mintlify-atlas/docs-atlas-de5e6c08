@@ -1,0 +1,245 @@
+---
+title: "Lefthook configuration: file formats and all options"
+description: "Complete reference for lefthook.yml: supported file formats, top-level options, merge order, and links to every configuration section."
+---
+
+Lefthook reads its configuration from a file in your project root. You can use YAML, TOML, JSON, or JSONC format—whichever fits your toolchain. Every hook, command, and global setting lives in this one file, with an optional local override file that you can keep out of version control.
+
+## Config file names
+
+Lefthook looks for the following file names. Use exactly one format per project; if multiple files exist, lefthook will pick one and you won't know which.
+
+| Format | File names |
+|--------|------------|
+| YAML   | `lefthook.yml`, `.lefthook.yml`, `.config/lefthook.yml` |
+| YAML   | `lefthook.yaml`, `.lefthook.yaml`, `.config/lefthook.yaml` |
+| TOML   | `lefthook.toml`, `.lefthook.toml`, `.config/lefthook.toml` |
+| JSON   | `lefthook.json`, `.lefthook.json`, `.config/lefthook.json` |
+| JSONC  | `lefthook.jsonc`, `.lefthook.jsonc`, `.config/lefthook.jsonc` |
+
+<Note>
+Filenames without the leading dot are also discovered inside the `.config/` subdirectory, following the [config-dir convention](https://github.com/pi0/config-dir).
+</Note>
+
+## Local override file
+
+Lefthook merges an additional `lefthook-local` file on top of the main config. All supported formats apply. If your main config uses a leading dot (e.g., `.lefthook.yml`), the local file must also use a leading dot (`.lefthook-local.yml`).
+
+The local file is useful for personal tweaks—like skipping slow checks on your machine—without touching the shared config. Add `lefthook-local.yml` to your global `.gitignore` so it stays off version control. You can even use a local file without a main config at all.
+
+## Merge order
+
+Settings are applied in this order, with each layer able to override the previous one:
+
+<Steps>
+  <Step title="lefthook.yml">
+    The main config file committed to the repository.
+  </Step>
+  <Step title="extends">
+    Any files listed in the `extends` option, merged in order.
+  </Step>
+  <Step title="remotes">
+    Configs fetched from remote Git repositories listed in `remotes`.
+  </Step>
+  <Step title="lefthook-local.yml">
+    Your local override file. This has the final say on every option.
+  </Step>
+</Steps>
+
+## Top-level options
+
+These options sit at the root of your config file, outside any hook definition.
+
+### `assert_lefthook_installed`
+
+**Default:** `false`
+
+When `true`, lefthook fails with exit code 1 if the `lefthook` executable cannot be found in `$PATH`, `node_modules/`, as a Ruby gem, or another supported location. This prevents Git hooks from silently passing if lefthook was accidentally uninstalled.
+
+```yaml
+# lefthook.yml
+
+assert_lefthook_installed: true
+```
+
+### `colors`
+
+**Default:** `auto`
+
+Controls colorized output. Set to `false` to disable, or supply custom hex or ANSI color codes. You can also set `NO_COLOR=true` in your environment to strip all color, or `CLICOLOR_FORCE=true` to force it on.
+
+```yaml
+# lefthook.yml
+
+colors: false
+```
+
+```yaml
+# lefthook.yml
+
+colors:
+  cyan: 14
+  gray: 244
+  green: '#32CD32'
+  red: '#FF1493'
+  yellow: '#F0E68C'
+```
+
+### `min_version`
+
+Require a minimum lefthook binary version. Lefthook will refuse to run if the installed version is older than this value.
+
+```yaml
+# lefthook.yml
+
+min_version: 1.10.0
+```
+
+### `no_tty`
+
+**Default:** `false`
+
+Hide the spinner and other interactive elements. Equivalent to passing `--no-tty` to `lefthook run`. Useful in CI environments or scripts.
+
+```yaml
+# lefthook.yml
+
+no_tty: true
+```
+
+### `output`
+
+Controls which sections appear in lefthook's output. By default, all output is enabled. Set to `false` to suppress everything except errors, or list only the sections you want.
+
+```yaml
+# lefthook.yml
+
+output:
+  - meta           # lefthook version header
+  - summary        # summary block of passed/failed steps
+  - empty_summary  # summary heading even when nothing ran
+  - success        # successful step output
+  - failure        # failed step output
+  - execution      # execution logs (alias: jobs)
+  - execution_out  # stdout/stderr of each command (alias: jobs_out)
+  - execution_info # "EXECUTE > ..." lines (alias: jobs_info)
+  - skips          # steps skipped due to no matching files
+  - setup          # output from setup instructions
+```
+
+You can also extend this list at runtime without changing the file:
+
+```bash
+LEFTHOOK_OUTPUT="meta,success,summary" lefthook run pre-commit
+```
+
+### `rc`
+
+Path to a shell (`sh`) rc file that is sourced before lefthook runs. Use this to set environment variables—like `PATH` tweaks from `nvm` or `rbenv`—that GUI Git clients cannot pick up from your shell profile.
+
+```yaml
+# lefthook-local.yml
+
+rc: ~/.lefthookrc
+```
+
+```bash
+# ~/.lefthookrc
+
+export NVM_DIR="$HOME/.nvm"
+[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+```
+
+### `skip_lfs`
+
+**Default:** `false`
+
+Skip running Git LFS hooks even when LFS is installed on the system.
+
+```yaml
+# lefthook.yml
+
+skip_lfs: true
+```
+
+### `source_dir`
+
+**Default:** `.lefthook/`
+
+Directory that stores script files. Lefthook looks for scripts in subdirectories named after Git hooks:
+
+```
+.lefthook/
+├── pre-commit/
+│   ├── lint.sh
+│   └── test.py
+└── pre-push/
+    └── check-files.rb
+```
+
+### `source_dir_local`
+
+**Default:** `.lefthook-local/`
+
+Directory for local script files that are not committed to version control. Pair this with `lefthook-local.yml` to reference machine-specific scripts.
+
+### `lefthook` executable
+
+**Added in:** 1.10.5 · **Default:** `null`
+
+Override the lefthook binary or command used to run hooks. Accepts a full path or a Bourne shell command. This option is intentionally not merged from `remotes` or `extends` for security reasons, but it is merged from `lefthook-local.yml`.
+
+```yaml
+# lefthook.yml
+
+lefthook: bundle exec lefthook
+
+pre-commit:
+  jobs:
+    - run: bundle exec rubocop -- {staged_files}
+```
+
+```yaml
+# lefthook-local.yml
+
+lefthook: LEFTHOOK_VERBOSE=1 lefthook
+```
+
+### `templates`
+
+**Added in:** 1.10.8
+
+Define named string templates that are substituted into `run` values. Override them in `lefthook-local.yml` to customize behavior per machine without rewriting job definitions.
+
+```yaml
+# lefthook.yml
+
+templates:
+  wrapper: docker-compose run --rm -v $(pwd):/app service
+
+pre-commit:
+  jobs:
+    - run: {wrapper} yarn format
+    - run: {wrapper} yarn lint
+    - run: {wrapper} yarn test
+```
+
+## Explore configuration sections
+
+<CardGroup cols={2}>
+  <Card title="Git hooks" icon="git-alt" href="/configuration/hooks">
+    Configure hook-level options like `parallel`, `piped`, `skip`, and `only`.
+  </Card>
+  <Card title="Jobs: commands and scripts" icon="terminal" href="/configuration/jobs">
+    Define tasks using `jobs`, `commands`, or `scripts` with all supported options.
+  </Card>
+  <Card title="File filtering and templates" icon="filter" href="/configuration/files-and-filters">
+    Use file templates, glob patterns, and `file_types` to target specific files.
+  </Card>
+  <Card title="Controlling execution" icon="sliders" href="/configuration/execution">
+    Control parallelism, skip conditions, output verbosity, and failure behavior.
+  </Card>
+  <Card title="Extends and remotes" icon="share-nodes" href="/configuration/extends-and-remotes">
+    Share configurations across projects using `extends` and remote Git repos.
+  </Card>
+</CardGroup>

@@ -1,0 +1,167 @@
+---
+title: "Install Lefthook via npm, gem, Homebrew, or binary"
+description: "Install Lefthook as a standalone binary or through your project's package manager. Supports npm, gem, pipx, Homebrew, apt, and more."
+---
+
+Lefthook distributes as a standalone binary with no runtime dependencies. The most common approach is to install it through your project's package manager so that everyone on your team gets the same version automatically. You can also install it globally via a system package manager or download the binary directly.
+
+## Package managers
+
+<CodeGroup>
+
+```bash npm
+npm install --save-dev lefthook
+```
+
+```bash yarn
+yarn add --dev lefthook
+```
+
+```bash pnpm
+pnpm add -D lefthook
+```
+
+```bash gem
+gem install lefthook
+```
+
+```ruby Gemfile
+# Add to your Gemfile
+group :development do
+  gem "lefthook", require: false
+end
+```
+
+```bash pip
+python -m pip install --user lefthook
+```
+
+```bash uv
+uv add --dev lefthook
+```
+
+```bash pipx
+pipx install lefthook
+```
+
+```bash Go (global)
+go install github.com/evilmartians/lefthook/v2@v2.1.6
+```
+
+```bash Go (project tool)
+go get -tool github.com/evilmartians/lefthook/v2
+```
+
+</CodeGroup>
+
+<Note>
+If you use `pnpm`, add `lefthook` to `onlyBuiltDependencies` in your root `package.json` and to `pnpm-workspace.yaml`. Without this, the `postinstall` script won't run and hooks won't be installed automatically.
+</Note>
+
+## System package managers
+
+<Tabs>
+  <Tab title="macOS / Linux">
+    <CodeGroup>
+
+    ```bash Homebrew
+    brew install lefthook
+    ```
+
+    ```bash mise
+    mise use lefthook@latest
+    ```
+
+    ```bash Devbox
+    devbox add lefthook@latest
+    ```
+
+    </CodeGroup>
+
+    <Note>
+    The mise and Devbox plugins for Lefthook are community-maintained. The Lefthook team cannot provide direct support for installation issues specific to those tools.
+    </Note>
+  </Tab>
+  <Tab title="Windows">
+    <CodeGroup>
+
+    ```bash winget
+    winget install evilmartians.lefthook
+    ```
+
+    ```bash Scoop
+    scoop install lefthook
+    ```
+
+    </CodeGroup>
+  </Tab>
+  <Tab title="Debian / Ubuntu">
+
+    ```bash
+    curl -1sLf 'https://dl.cloudsmith.io/public/evilmartians/lefthook/setup.deb.sh' | sudo -E bash
+    sudo apt install lefthook
+    ```
+
+  </Tab>
+  <Tab title="CentOS / Fedora">
+
+    ```bash
+    curl -1sLf 'https://dl.cloudsmith.io/public/evilmartians/lefthook/setup.rpm.sh' | sudo -E bash
+    sudo yum install lefthook
+    ```
+
+  </Tab>
+  <Tab title="Arch Linux">
+
+    ```bash
+    # Compile from sources
+    yay -S lefthook
+
+    # Install pre-compiled binary
+    yay -S lefthook-bin
+    ```
+
+  </Tab>
+  <Tab title="Alpine Linux">
+
+    ```bash
+    sudo apk add --no-cache bash curl
+    curl -1sLf 'https://dl.cloudsmith.io/public/evilmartians/lefthook/setup.alpine.sh' | sudo -E bash
+    sudo apk add lefthook
+    ```
+
+  </Tab>
+  <Tab title="Linux (Snap)">
+
+    ```bash
+    snap install --classic lefthook
+    ```
+
+  </Tab>
+</Tabs>
+
+## Swift
+
+Use the [Swift wrapper plugin](https://github.com/csjones/lefthook-plugin) to integrate Lefthook into a Swift project via Swift Package Manager:
+
+```swift Package.swift
+.package(url: "https://github.com/csjones/lefthook-plugin.git", exact: "2.1.6"),
+```
+
+Or with [Mint](https://github.com/yonaskolb/Mint):
+
+```bash
+mint run csjones/lefthook-plugin
+```
+
+## Manual binary download
+
+Download a pre-built binary for your OS and architecture from the [latest GitHub release](https://github.com/evilmartians/lefthook/releases/latest) and place it somewhere on your `$PATH`.
+
+## Keeping Lefthook up to date
+
+If you installed Lefthook as a standalone binary, you can update it in place:
+
+```bash
+lefthook self-update
+```

@@ -1,0 +1,122 @@
+---
+title: "Share Lefthook hook configs across repos with remotes"
+description: "Use the remotes option to pull lefthook configuration from a shared Git repository and automatically merge it into your local setup."
+---
+
+The `remotes` option lets you fetch Lefthook configuration from an external Git repository and merge it into your project's `lefthook.yml`. This is useful for sharing a common set of hooks — security checks, linting rules, or CI policies — across many repositories without duplicating config in each one.
+
+## Basic setup
+
+Add a `remotes` block to your `lefthook.yml`. Each entry needs at minimum a `git_url`:
+
+```yaml
+# lefthook.yml
+remotes:
+  - git_url: https://github.com/evilmartians/lefthook
+    configs:
+      - examples/remote/ping.yml
+```
+
+When Lefthook runs, it clones the remote repository and reads the specified config files. The hooks defined in those files are merged into your local configuration.
+
+If you omit `configs`, Lefthook looks for `lefthook.yml` at the root of the remote repository.
+
+## Pin to a branch or tag with `ref`
+
+By default, Lefthook fetches the remote's default branch. Use `ref` to pin to a specific branch, tag, or commit:
+
+```yaml
+# lefthook.yml
+remotes:
+  - git_url: git@github.com:evilmartians/lefthook
+    ref: v1.0.0
+    configs:
+      - examples/ruby-linter.yml
+```
+
+Pinning to a tag prevents unexpected changes when the remote config is updated.
+
+## Keep configs up to date with `refetch` and `refetch_frequency`
+
+By default, Lefthook fetches the remote once and caches it. To control how often it re-fetches:
+
+**Always re-fetch** — use `refetch: true` to pull the latest version on every run:
+
+```yaml
+# lefthook.yml
+remotes:
+  - git_url: https://github.com/my-org/shared-hooks
+    refetch: true
+```
+
+**Re-fetch on a schedule** — use `refetch_frequency` with a duration like `24h` or `30m`:
+
+```yaml
+# lefthook.yml
+remotes:
+  - git_url: https://github.com/my-org/shared-hooks
+    refetch_frequency: 24h
+```
+
+`refetch_frequency` also accepts `always` (equivalent to `refetch: true`) and `never`.
+
+<Note>
+If `refetch: true` is set, it overrides any `refetch_frequency` setting. If a fetch fails, Lefthook logs a warning and uses the previously cached config if available.
+</Note>
+
+<Tip>
+For remotes that point to mutable references (branches instead of tags), configure `refetch_frequency` so your team automatically picks up updates to the shared config.
+</Tip>
+
+## Use multiple remotes
+
+You can specify more than one remote in the array:
+
+```yaml
+# lefthook.yml
+remotes:
+  - git_url: https://github.com/my-org/security-hooks
+    ref: main
+    refetch_frequency: 24h
+    configs:
+      - hooks/pre-commit.yml
+      - hooks/pre-push.yml
+  - git_url: https://github.com/my-org/style-hooks
+    ref: v2.1.0
+    configs:
+      - ruby-style.yml
+```
+
+Each remote is fetched independently and its configs are merged in the order they're listed.
+
+## How remotes merge with local config
+
+Configs are merged in this order:
+
+1. `lefthook.yml` — your local config
+2. Files listed in `extends` — local file extensions
+3. `remotes` — remote configs (in array order)
+4. `lefthook-local.yml` — personal overrides (wins over everything)
+
+This means your `lefthook-local.yml` can always override anything from a remote, and remotes can add hooks without conflicting with your local config as long as you keep job names independent.
+
+<Note>
+For simplicity, keep jobs in remote configs independent from jobs in your local config. Shared job names will be merged by name, which can cause unexpected behavior if both define the same properties.
+</Note>
+
+## Scripts in remote configs
+
+If a remote config references scripts (defined with the `script` key in jobs), the scripts directory must be at the root of the remote repository. Lefthook will look for it in the cloned remote, not in your local project.
+
+## `remotes` vs `extends`
+
+Both `remotes` and `extends` let you split your Lefthook config across multiple files, but they serve different purposes:
+
+| | `extends` | `remotes` |
+|---|---|---|
+| Source | Local filesystem paths | External Git repositories |
+| Use case | Splitting a large config into files in the same repo | Sharing hooks across many repos |
+| Versioning | Controlled by your repo's git history | Can be pinned with `ref` |
+| Auto-update | No | Yes, via `refetch` or `refetch_frequency` |
+
+Use `extends` for organization within a single repo, and `remotes` when you want to share and centrally manage hooks across your organization.

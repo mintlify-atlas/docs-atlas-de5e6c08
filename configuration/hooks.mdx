@@ -1,0 +1,250 @@
+---
+title: "Configuring Git hooks: parallel, skip, and filters"
+description: "Configure any Git hook or custom hook in lefthook.yml with parallel execution, skip rules, file filters, and tag-based exclusions."
+---
+
+Any standard Git hook name—or a name you invent yourself—can be a top-level key in `lefthook.yml`. Lefthook runs all commands and scripts defined under that key whenever the corresponding hook fires. You can also create custom hooks (like `check-docs`) and trigger them manually with `lefthook run <hook-name>`.
+
+## Hook definition
+
+```yaml
+# lefthook.yml
+
+# Standard Git hook
+pre-commit:
+  jobs:
+    - run: yarn lint {staged_files}
+
+# Custom hook – run manually with `lefthook run check-docs`
+check-docs:
+  jobs:
+    - run: yarn check-docs
+    - run: typos
+```
+
+## Hook-level options
+
+These options apply to the entire hook and all commands or scripts within it.
+
+### `parallel`
+
+**Default:** `false`
+
+Run all commands and scripts in the hook concurrently. By default, lefthook runs them sequentially.
+
+```yaml
+# lefthook.yml
+
+pre-commit:
+  parallel: true
+  commands:
+    lint:
+      run: yarn lint
+    test:
+      run: yarn test
+```
+
+<Note>
+You cannot set both `parallel: true` and `piped: true` on the same hook—lefthook will return an error.
+</Note>
+
+### `piped`
+
+**Default:** `false`
+
+Stop executing remaining commands and scripts if any step fails. Use this when later steps depend on earlier ones completing successfully.
+
+```yaml
+# lefthook.yml
+
+database:
+  piped: true
+  commands:
+    1_create:
+      run: rake db:create
+    2_migrate:
+      run: rake db:migrate
+    3_seed:
+      run: rake db:seed
+```
+
+### `follow`
+
+**Default:** `false`
+
+Stream the stdout of running commands in real time instead of buffering output until each command finishes.
+
+```yaml
+# lefthook.yml
+
+pre-push:
+  follow: true
+  commands:
+    backend-tests:
+      run: bundle exec rspec
+    frontend-tests:
+      run: yarn test
+```
+
+<Warning>
+Avoid combining `follow: true` with `parallel: true`. The interleaved output from concurrent processes will be difficult to read.
+</Warning>
+
+### `files` (hook-level)
+
+A shell command whose output provides the file list for `{files}` template substitutions in every command under this hook. If the command returns an empty list, all commands in the hook are skipped.
+
+```yaml
+# lefthook.yml
+
+pre-commit:
+  files: git diff --name-only master
+  commands:
+    lint:
+      run: yarn lint {files}
+```
+
+A job-level [`files`](/configuration/files-and-filters#files-job-level) option overrides this hook-level setting for that specific job.
+
+### `fail_on_changes`
+
+**Default:** `never`
+
+Control whether lefthook exits with a non-zero status when tracked files are modified during hook execution. Useful when you use `stage_fixed` and want CI to catch unexpected reformatting.
+
+| Value | Behavior |
+|-------|----------|
+| `never` | Never fail due to file changes (default). |
+| `always` | Always fail if any tracked files change. |
+| `ci` | Fail only when the `CI` environment variable is set. |
+| `non-ci` | Fail only when `CI` is _not_ set (e.g., for tools like [autofix.ci](https://autofix.ci)). |
+
+```yaml
+# lefthook.yml
+
+pre-commit:
+  parallel: true
+  fail_on_changes: ci
+  commands:
+    lint:
+      run: yarn lint --fix {staged_files}
+```
+
+### `fail_on_changes_diff`
+
+**Default:** outputs diff only in CI
+
+When `fail_on_changes` triggers, this boolean controls whether lefthook prints a diff of the detected changes. Set to `true` to always show the diff, or `false` to suppress it.
+
+```yaml
+# lefthook.yml
+
+pre-commit:
+  fail_on_changes: always
+  fail_on_changes_diff: true
+  commands:
+    lint:
+      run: yarn lint
+```
+
+### `exclude_tags`
+
+Exclude commands or scripts that carry specific [tags](/configuration/execution#tags). You can list tag names or command names. Override this at runtime with the `LEFTHOOK_EXCLUDE` environment variable.
+
+```yaml
+# lefthook.yml
+
+pre-push:
+  commands:
+    packages-audit:
+      tags:
+        - frontend
+        - security
+      run: yarn audit
+    gems-audit:
+      tags:
+        - backend
+        - security
+      run: bundle audit
+```
+
+```yaml
+# lefthook-local.yml
+
+pre-push:
+  exclude_tags:
+    - frontend  # skip packages-audit locally
+```
+
+### `exclude`
+
+A list of glob patterns for files to exclude from all file template substitutions in this hook. If the excluded files were the only staged files, the affected commands are skipped entirely.
+
+```yaml
+# lefthook.yml
+
+pre-commit:
+  exclude:
+    - "*/application.rb"
+  jobs:
+    - name: lint
+      run: bundle exec rubocop # skipped if only application.rb was staged
+```
+
+### `skip`
+
+Skip the entire hook under certain conditions. Accepts the same values as the job-level `skip` option: `merge`, `rebase`, `merge-commit`, `ref: <branch>`, and `run: <command>`.
+
+```yaml
+# lefthook.yml
+
+pre-commit:
+  skip:
+    - ref: main
+  commands:
+    lint:
+      run: yarn lint
+```
+
+### `only`
+
+Run the hook only when specific conditions are met. Acts as the inverse of `skip`—the hook is skipped unless the condition is satisfied. Accepts the same values as `skip`.
+
+```yaml
+# lefthook.yml
+
+pre-commit:
+  only:
+    - ref: dev/*
+  commands:
+    lint:
+      run: yarn lint
+```
+
+## Standard Git hooks reference
+
+You can use any of these hook names as keys in your `lefthook.yml`:
+
+| Hook | When it runs |
+|------|-------------|
+| `pre-commit` | Before a commit is recorded; staged files are available. |
+| `prepare-commit-msg` | Before the commit message editor opens. |
+| `commit-msg` | After the message is written; receives the message file path as `{1}`. |
+| `post-commit` | After the commit is recorded. |
+| `pre-rebase` | Before a rebase starts. |
+| `post-checkout` | After `git checkout` or `git switch`. |
+| `post-merge` | After `git merge`. |
+| `pre-push` | Before refs are pushed; push-range files are available. |
+| `pre-receive` | Server-side: before refs are updated. |
+| `update` | Server-side: for each ref being updated. |
+| `post-receive` | Server-side: after all refs are updated. |
+| `post-update` | Server-side: after the update hook. |
+| `reference-transaction` | When a ref transaction is prepared, committed, or aborted. |
+| `push-to-checkout` | When a push updates the working tree on a non-bare repo. |
+| `pre-applypatch` | Before a patch is applied. |
+| `applypatch-msg` | After the patch message is prepared. |
+| `post-applypatch` | After a patch is applied. |
+| `sendemail-validate` | Before `git send-email` sends a patch. |
+| `fsmonitor-watchman` | When Git queries the filesystem monitor. |
+| `p4-pre-submit` | Before a Perforce submit. |
+| `post-index-change` | After the index is written. |

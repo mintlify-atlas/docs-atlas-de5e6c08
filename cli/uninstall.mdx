@@ -1,0 +1,54 @@
+---
+title: "lefthook uninstall — remove lefthook Git hook scripts"
+description: "Run lefthook uninstall to remove all hook scripts that lefthook wrote to .git/hooks/ and optionally delete your lefthook configuration files."
+---
+
+The `lefthook uninstall` command clears the Git hook scripts that lefthook previously installed. By default it removes only the hook entries lefthook manages, leaving any other content in `.git/hooks/` untouched. Use the flags below to go further and remove all Git hooks or your lefthook configuration files entirely.
+
+## Usage
+
+```bash
+lefthook uninstall [options]
+```
+
+## Flags
+
+| Flag | Short | Description |
+|---|---|---|
+| `--force` | `-f` | Remove **all** Git hooks from `.git/hooks/`, not just the ones lefthook installed. |
+| `--remove-configs` | | Also delete the lefthook configuration files (`lefthook.yml`, `lefthook-local.yml`). |
+| `--verbose` | `-v` | Enable debug log output. |
+
+## What gets removed
+
+By default, `lefthook uninstall` removes the hook scripts written by lefthook from `.git/hooks/`. If a hook file existed before lefthook installed, lefthook may have saved a backup with the `.old` suffix — uninstall restores those backups.
+
+```bash
+lefthook uninstall
+```
+
+## Removing all hooks
+
+Pass `--force` to wipe every file from `.git/hooks/`, regardless of whether lefthook created it:
+
+```bash
+lefthook uninstall --force
+```
+
+<Warning>
+`--force` removes hooks that were not created by lefthook, including any `.old` backup files. This cannot be undone — make sure you no longer need any of those hook scripts before proceeding.
+</Warning>
+
+## Removing configuration files too
+
+If you are removing lefthook from a project entirely, combine `--remove-configs` with `--force`:
+
+```bash
+lefthook uninstall --force --remove-configs
+```
+
+This removes the hook scripts **and** deletes `lefthook.yml` and `lefthook-local.yml` from your project root.
+
+<Note>
+After uninstalling, your Git hooks directory will no longer call lefthook. Re-run `lefthook install` at any time to restore the hooks.
+</Note>

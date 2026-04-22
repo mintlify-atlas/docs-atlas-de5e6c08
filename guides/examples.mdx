@@ -1,0 +1,261 @@
+---
+title: "Lefthook config examples: linting, Docker, mono-repos"
+description: "Real-world lefthook.yml examples covering commit message linting, file filters, parallel linters, Docker wrapping, and mono-repo setups."
+---
+
+These examples show common Lefthook configurations drawn from real projects. Each one is self-contained and can be adapted for your own setup.
+
+## Commitlint: enforce commit message format
+
+Use `commit-msg` to validate commit messages with [commitlint](https://commitlint.io), and optionally use `prepare-commit-msg` with [commitizen](https://commitizen-tools.github.io/commitizen/) to generate them interactively.
+
+<Steps>
+  <Step title="Install dependencies">
+    ```bash
+    yarn add -D @commitlint/cli @commitlint/config-conventional
+
+    # If you also want commitizen for interactive commit messages:
+    yarn add -D commitizen cz-conventional-changelog
+    ```
+  </Step>
+  <Step title="Configure commitlint">
+    ```js
+    // commitlint.config.js
+    module.exports = {extends: ['@commitlint/config-conventional']};
+    ```
+
+    If using commitizen, add this to `package.json`:
+
+    ```json
+    "config": {
+      "commitizen": {
+        "path": "./node_modules/cz-conventional-changelog"
+      }
+    }
+    ```
+  </Step>
+  <Step title="Configure lefthook">
+    ```yaml
+    # lefthook.yml
+
+    # Generate commit messages interactively with commitizen
+    prepare-commit-msg:
+      commands:
+        commitzen:
+          interactive: true
+          run: yarn run cz --hook
+          env:
+            LEFTHOOK: 0
+
+    # Validate commit messages with commitlint
+    commit-msg:
+      commands:
+        "lint commit message":
+          run: yarn run commitlint --edit {1}
+    ```
+  </Step>
+</Steps>
+
+## File filters: target exactly the right files
+
+Use `glob`, `exclude`, `root`, and `file_types` to precisely control which files a command receives. This example runs ESLint only on non-executable TypeScript/JavaScript files inside the `frontend/` subdirectory, excluding config files:
+
+```yaml
+# lefthook.yml
+pre-commit:
+  commands:
+    lint:
+      run: yarn lint {staged_files} --fix
+      glob: "*.{js,ts}"
+      root: frontend
+      exclude:
+        - "*.config.js"
+        - "*.config.ts"
+      file_types:
+        - not executable
+```
+
+Given these staged files:
+
+```bash
+backend/asset.js
+frontend/src/index.ts
+frontend/bin/cli.js     # executable — excluded
+frontend/eslint.config.js  # config file — excluded
+frontend/README.md      # not JS/TS — excluded
+```
+
+Lefthook runs:
+
+```bash
+yarn lint frontend/src/index.ts --fix
+```
+
+## Running linters in parallel
+
+Run frontend and backend linters concurrently in `pre-push` to cut down on total hook time:
+
+```yaml
+# lefthook.yml
+pre-push:
+  parallel: true
+  commands:
+    stylelint:
+      tags: frontend style
+      files: git diff --name-only master
+      glob: "*.js"
+      run: yarn stylelint {files}
+    rubocop:
+      tags: backend style
+      files: git diff --name-only master
+      glob: "*.rb"
+      run: bundle exec rubocop --force-exclusion -- {files}
+```
+
+The `files` option runs a git command to get the list of changed files, and `{files}` in `run` is replaced with the result. Both commands run in parallel and only process files changed since `master`.
+
+## Wrap commands for Docker environments
+
+Shared configs often run commands directly (e.g., `bundle exec rubocop`). If you work inside Docker, use `lefthook-local.yml` with `{cmd}` to wrap each command without touching the shared config:
+
+```yaml
+# lefthook.yml
+pre-commit:
+  jobs:
+    - name: rubocop
+      run: bundle exec rubocop -A -- {staged_files}
+```
+
+```yaml
+# lefthook-local.yml
+pre-commit:
+  jobs:
+    - name: rubocop
+      run: dip {cmd}
+```
+
+Lefthook substitutes `{cmd}` with the original `run` value, producing:
+
+```bash
+dip bundle exec rubocop -A -- {staged_files}
+```
+
+You can also use `docker-compose run <service> {cmd}` in place of `dip`.
+
+## Mono-repo setup with `root`
+
+In a mono-repo, scope a command to a subdirectory using the `root` option. This runs linting relative to the `frontend/` directory and passes only files within it:
+
+```yaml
+# lefthook.yml
+pre-commit:
+  parallel: true
+  commands:
+    js-lint:
+      glob: "*.{js,ts}"
+      root: frontend
+      run: npx eslint --fix -- {staged_files}
+      stage_fixed: true
+    ruby-lint:
+      glob: "*.rb"
+      root: backend
+      run: bundle exec rubocop --force-exclusion -- {staged_files}
+      stage_fixed: true
+```
+
+Files outside the specified `root` are filtered out before the command runs.
+
+## Auto-fix and auto-stage with `stage_fixed`
+
+Combine linters that support auto-fixing with `stage_fixed: true` so that fixed files are automatically re-staged and included in the commit:
+
+```yaml
+# lefthook.yml
+pre-commit:
+  commands:
+    eslint:
+      tags: frontend
+      glob: "*.{js,ts}"
+      run: npx eslint --fix -- {staged_files}
+      stage_fixed: true
+    prettier:
+      tags: frontend
+      glob: "*.{js,ts,css,json}"
+      run: npx prettier --write {staged_files}
+      stage_fixed: true
+    rubocop:
+      tags: backend
+      glob: "*.rb"
+      run: bundle exec rubocop --auto-correct-all -- {staged_files}
+      stage_fixed: true
+```
+
+<Warning>
+Auto-staged changes are committed without a second review. Check what's staged with `git diff --cached` if you want to inspect linter changes before committing. You can also run `lefthook run pre-commit --no-stage-fixed` to see what linters would change without staging those changes.
+</Warning>
+
+## Pull shared configs from a remote repository
+
+Use `remotes` to pull hook configs from a shared Git repository. This is useful for enforcing organization-wide standards across many repos:
+
+```yaml
+# lefthook.yml
+remotes:
+  - git_url: https://github.com/my-org/shared-hooks
+    ref: v1.0.0
+    configs:
+      - hooks/security-checks.yml
+      - hooks/style-checks.yml
+```
+
+Add `refetch_frequency` to automatically pull updates:
+
+```yaml
+# lefthook.yml
+remotes:
+  - git_url: https://github.com/my-org/shared-hooks
+    refetch_frequency: 24h
+    configs:
+      - hooks/pre-commit.yml
+```
+
+## Lefthook's own config
+
+Lefthook's own `.lefthook.yml` is a good real-world reference. It runs Go linting and tests, checks links in Markdown files, fixes typos, and regenerates the JSON schema — all in parallel:
+
+```yaml
+# .lefthook.yml (from the Lefthook project itself)
+pre-commit:
+  parallel: true
+  jobs:
+    - name: lint & test
+      glob: "*.go"
+      group:
+        jobs:
+          - run: make lint
+            tags: lint
+            stage_fixed: true
+          - run: make test
+            tags: test
+
+    - name: check links
+      tags: docs
+      run: lychee --max-concurrency 3 -- {staged_files}
+      glob: "*.md"
+
+    - name: fix typos
+      tags: lint
+      run: typos --write-changes {staged_files}
+      stage_fixed: true
+
+    - name: update JSON schema
+      tags: docs
+      run: |
+        go generate gen/jsonschema.go > internal/config/jsonschema.json
+        go generate gen/jsonschema.go > schema.json
+        git add internal/config/jsonschema.json
+        git add schema.json
+      glob:
+        - "gen/jsonschema.go"
+        - "internal/config/*.go"
+```

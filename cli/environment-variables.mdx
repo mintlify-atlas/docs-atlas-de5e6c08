@@ -1,0 +1,167 @@
+---
+title: "Lefthook environment variables: complete reference"
+description: "Complete reference for all environment variables lefthook recognizes: disable hooks, override config paths, control output sections, and manage color behavior."
+---
+
+Lefthook reads several environment variables that let you change its behavior without modifying any config file. These variables are especially useful in CI pipelines, local developer scripts, and debugging sessions.
+
+## Variable reference
+
+### `LEFTHOOK`
+
+Controls whether lefthook executes at all.
+
+| Value | Effect |
+|---|---|
+| `0` or `false` | Disable all lefthook hook execution. |
+| `1` or `true` | Force hook installation even when `CI=true` is set (NPM package only). |
+
+**Disabling hooks for a single command:**
+
+```bash
+LEFTHOOK=0 git commit -am "Skip hooks for this commit"
+```
+
+**Forcing hook installation in CI with the NPM package:**
+
+```bash
+LEFTHOOK=1 npm install
+LEFTHOOK=1 yarn install
+LEFTHOOK=1 pnpm install
+```
+
+---
+
+### `LEFTHOOK_VERBOSE`
+
+Enables debug-level log output, equivalent to passing `--verbose` to any command.
+
+| Value | Effect |
+|---|---|
+| `1` or `true` | Enable verbose/debug output. |
+
+```bash
+LEFTHOOK_VERBOSE=1 lefthook run pre-commit
+```
+
+---
+
+### `LEFTHOOK_OUTPUT`
+
+Overrides the `output` setting in `lefthook.yml`, controlling which sections lefthook prints.
+
+| Value | Effect |
+|---|---|
+| Comma-separated output keys | Print only those sections (e.g. `summary`, `execution`). |
+| `false` | Suppress all output except errors. |
+
+```bash
+# Show only the summary line
+LEFTHOOK_OUTPUT=summary lefthook run pre-commit
+```
+
+Example output:
+
+```
+summary: (done in 0.52 seconds)
+✔️  lint
+```
+
+Refer to the `output` configuration option for the full list of accepted keys.
+
+---
+
+### `LEFTHOOK_EXCLUDE`
+
+Excludes specific tags or command names from running, overriding what is set in config.
+
+Pass a comma-separated list of tag or command names:
+
+```bash
+LEFTHOOK_EXCLUDE=ruby,security,lint git commit -am "Skip these checks"
+```
+
+This is equivalent to the `exclude_tags` configuration option but applied at runtime without editing any file.
+
+---
+
+### `LEFTHOOK_BIN`
+
+Tells the Git hook scripts exactly which lefthook binary to call, bypassing `PATH` lookup and package manager shims.
+
+```bash
+export LEFTHOOK_BIN=/usr/local/bin/lefthook
+```
+
+Useful when:
+- Lefthook is installed in multiple ways (e.g. Homebrew and also in a `Gemfile`), and you want to be explicit about which one runs.
+- You are debugging or developing lefthook itself and want a specific build to be used.
+
+---
+
+### `LEFTHOOK_CONFIG`
+
+Overrides the path to the main lefthook configuration file.
+
+```bash
+export LEFTHOOK_CONFIG=~/global_lefthook.yml
+```
+
+<Note>
+Setting `LEFTHOOK_CONFIG` only replaces the main config file. Local config (`lefthook-local.yml`), `extends`, and `remotes` defined within that config are still loaded and merged as normal.
+</Note>
+
+---
+
+### `CI`
+
+When the NPM package `lefthook` is used, a `CI=true` environment variable (set automatically by most CI providers) prevents lefthook from installing hooks during `npm install` / `yarn install` / `pnpm install`.
+
+```bash
+# Explicitly prevent hook installation in CI
+CI=true npm install
+```
+
+<Note>
+Set `LEFTHOOK=1` to override `CI=true` and force hook installation in the postinstall script, for example in a dedicated "install hooks in CI" pipeline step.
+</Note>
+
+---
+
+### `NO_COLOR`
+
+Disables colored output in lefthook and in all subcommands that lefthook spawns.
+
+```bash
+NO_COLOR=true lefthook run pre-commit
+```
+
+This follows the [no-color.org](https://no-color.org) convention. You can also control colors per-command with `lefthook run --colors off`.
+
+---
+
+### `CLICOLOR_FORCE`
+
+Forces colored output even when lefthook detects that stdout is not a TTY (for example, when piping output to a file or another process).
+
+```bash
+CLICOLOR_FORCE=true lefthook run pre-commit | tee hooks.log
+```
+
+<Tip>
+`NO_COLOR` takes precedence over `CLICOLOR_FORCE`. If both are set, color is disabled.
+</Tip>
+
+## Quick reference table
+
+| Variable | Purpose | Example value |
+|---|---|---|
+| `LEFTHOOK` | Enable or disable all hook execution | `0`, `false`, `1`, `true` |
+| `LEFTHOOK_VERBOSE` | Enable debug output | `1`, `true` |
+| `LEFTHOOK_OUTPUT` | Control which output sections print | `summary`, `false` |
+| `LEFTHOOK_EXCLUDE` | Skip commands or tags at runtime | `lint,security` |
+| `LEFTHOOK_BIN` | Path to a specific lefthook binary | `/usr/local/bin/lefthook` |
+| `LEFTHOOK_CONFIG` | Path to an alternate config file | `~/global_lefthook.yml` |
+| `CI` | Prevent hook install during npm postinstall | `true` |
+| `NO_COLOR` | Disable colored output globally | `true` |
+| `CLICOLOR_FORCE` | Force colored output even without a TTY | `true` |

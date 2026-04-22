@@ -1,0 +1,132 @@
+---
+title: "lefthook run — execute hook commands on demand manually"
+description: "Use lefthook run to trigger any hook group on demand, filter by job or tag, override the file list, and test your hooks without making an actual Git commit."
+---
+
+The `lefthook run` command executes every command and script configured for a given hook group. Git itself calls `lefthook run` implicitly whenever you perform an operation that triggers a hook (such as `git commit` for `pre-commit`). You can also invoke it directly at any time — for example, to test hooks in CI or to run a hook group that has no corresponding Git event.
+
+## Usage
+
+```bash
+lefthook run <hook-name> [git-args...] [options]
+```
+
+`<hook-name>` is required. Any positional arguments after the hook name are forwarded to the hook as Git arguments and are available inside scripts as `{1}`, `{2}`, etc.
+
+## Flags
+
+| Flag | Short | Default | Description |
+|---|---|---|---|
+| `--verbose` | `-v` | `false` | Enable debug log output. |
+| `--colors` | | `auto` | Control color output: `on`, `off`, or `auto`. |
+| `--job` | | | Run only jobs with these names (repeatable). |
+| `--tag` | | | Run only jobs that carry these tag names (repeatable). |
+| `--command` | | | Run only commands with these names (repeatable). |
+| `--exclude` | | | Exclude files matching these patterns from all file templates (repeatable). |
+| `--file` | | | Replace file templates with an explicit file list (repeatable). |
+| `--force` | `-f` | `false` | Do not skip execution when no files have changed. |
+| `--all-files` | | `false` | Replace `{staged_files}` and similar templates with all tracked files, as if `{all_files}` were used. |
+| `--no-auto-install` | | `false` | Do not implicitly run `lefthook install` before executing the hook. |
+| `--no-stage-fixed` | | `false` | Ignore the `stage_fixed: true` setting on any job. |
+| `--no-tty` | | `false` | Act as if no TTY is connected (disables interactive prompts). |
+| `--skip-lfs` | | `false` | Do not run Git LFS hooks even when applicable. |
+| `--fail-on-changes` | | | Exit with code `1` if any files were modified during the run. Pass `--no-fail-on-changes` to explicitly disable. |
+| `--files-from-stdin` | | `false` | Read the file list from stdin instead of computing it from Git state. |
+
+## Exit codes
+
+| Code | Meaning |
+|---|---|
+| `0` | All jobs succeeded. |
+| `1` | One or more jobs failed, or `--fail-on-changes` triggered. |
+
+## Running a hook group
+
+```bash
+lefthook run pre-commit
+```
+
+This executes every job defined under `pre-commit` in your `lefthook.yml`, in the same way Git would.
+
+## Filtering by job or tag
+
+Use `--job` and `--tag` together or separately to narrow which jobs execute:
+
+```bash
+# Run only the jobs named "lint" and "pretty"
+lefthook run pre-commit --job lint --job pretty
+
+# Run only jobs tagged "checks"
+lefthook run pre-commit --tag checks
+
+# Combine both
+lefthook run pre-commit --job lint --tag security
+```
+
+<Note>
+`--job` and `--tag` are additive: a job runs if it matches **any** of the specified job names **or** any of the specified tags.
+</Note>
+
+## Overriding the file list
+
+By default, file templates like `{staged_files}` resolve to the files Git currently has staged. You can override this:
+
+<CodeGroup>
+
+```bash All tracked files
+# Treat every tracked file as staged
+lefthook run pre-commit --all-files
+```
+
+```bash Explicit file list
+# Provide an explicit list of files
+lefthook run pre-commit --file src/foo.ts --file src/bar.ts
+```
+
+```bash Files from stdin
+# Pipe a file list in from another command
+git diff --name-only HEAD~1 | lefthook run pre-commit --files-from-stdin
+```
+
+</CodeGroup>
+
+<Note>
+When both `--all-files` and `--file` are provided, `--all-files` is ignored and the explicit `--file` list takes effect.
+</Note>
+
+## Forcing a run when no files changed
+
+Some hooks skip execution when no relevant files are staged. Pass `--force` to run regardless:
+
+```bash
+lefthook run pre-commit --force
+```
+
+## Detecting file changes after the run
+
+Use `--fail-on-changes` to make lefthook exit with code `1` if any files were modified during the hook run. This is useful in CI to catch hooks that auto-fix files without the author noticing:
+
+```bash
+lefthook run pre-commit --fail-on-changes
+```
+
+## Example config used in this page
+
+```yaml
+# lefthook.yml
+
+pre-commit:
+  jobs:
+    - name: lint
+      run: yarn lint --fix {staged_files}
+
+test:
+  jobs:
+    - name: test
+      run: yarn test
+```
+
+```bash
+# Run the custom "test" hook group manually
+lefthook run test
+```

@@ -1,0 +1,61 @@
+---
+title: "lefthook validate — check your config for errors"
+description: "Run lefthook validate to check your lefthook.yml against the official JSON schema and surface any structural or type errors before they break a hook run."
+---
+
+The `lefthook validate` command parses your lefthook configuration and checks it against the official JSON schema hosted in the lefthook GitHub repository. It exits with a non-zero code if the config contains any errors, making it easy to use as a CI gate after editing your config.
+
+## Usage
+
+```bash
+lefthook validate [options]
+```
+
+## Flags
+
+| Flag | Short | Description |
+|---|---|---|
+| `--verbose` | `-v` | Enable debug log output. |
+
+## When to use validate
+
+- After manually editing `lefthook.yml` to catch typos or structural mistakes.
+- In a CI pipeline to ensure the committed config is always valid.
+- Before opening a pull request that changes hook configuration.
+
+## Example: validating a correct config
+
+```bash
+lefthook validate
+```
+
+When the config is valid, the command exits with code `0` and prints nothing.
+
+## Example: catching an error
+
+If a required field is missing or a value has the wrong type, validate reports the problem:
+
+```bash
+lefthook validate
+# error: pre-commit.jobs[0].run is required
+```
+
+Fix the issue in `lefthook.yml`, then run validate again to confirm.
+
+## Using validate in CI
+
+Add validate to your CI pipeline as a lightweight syntax check:
+
+```yaml
+# .github/workflows/ci.yml
+- name: Validate lefthook config
+  run: lefthook validate
+```
+
+<Tip>
+Run `lefthook dump` first to see the fully merged configuration that `validate` will check. This helps you catch problems caused by `extends` or `lefthook-local.yml` overrides that affect the final structure.
+</Tip>
+
+<Note>
+Validation uses the JSON schema from the lefthook GitHub repository. Your config must be resolvable (files must exist and extends must be accessible) before validation can complete.
+</Note>

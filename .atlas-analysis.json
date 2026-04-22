@@ -1,0 +1,88 @@
+{
+  "projectType": "cli-tool",
+  "projectName": "Lefthook",
+  "projectDescription": "A fast, powerful, single-binary Git hooks manager for any type of project, supporting parallel execution, flexible file filters, and remote shared configs.",
+  "theme": "aspen",
+  "primaryColor": "#c51c1c",
+  "lightColor": "#431c1c",
+  "darkColor": "#d9d5d5",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction",
+              "installation",
+              "quickstart"
+            ]
+          },
+          {
+            "group": "Configuration",
+            "pages": [
+              "configuration/overview",
+              "configuration/hooks",
+              "configuration/jobs",
+              "configuration/files-and-filters",
+              "configuration/execution",
+              "configuration/extends-and-remotes"
+            ]
+          },
+          {
+            "group": "CLI Reference",
+            "pages": [
+              "cli/install",
+              "cli/run",
+              "cli/uninstall",
+              "cli/dump",
+              "cli/validate",
+              "cli/other-commands",
+              "cli/environment-variables"
+            ]
+          },
+          {
+            "group": "Guides",
+            "pages": [
+              "guides/local-config",
+              "guides/skipping-hooks",
+              "guides/stage-fixed",
+              "guides/remotes-sharing",
+              "guides/examples"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Parallel job execution for faster hook runs",
+    "Flexible file filtering with glob and regexp patterns",
+    "Run commands in subdirectories with root option",
+    "Script execution with configurable runners (bash, docker, etc.)",
+    "Job tagging for selective execution and exclusion",
+    "Local config overrides (lefthook-local.yml) for per-developer customization",
+    "Remote shared configurations fetched from git repositories",
+    "Config extends for composing multiple config files",
+    "Support for all standard Git hooks plus custom hook groups",
+    "Distributed as a single dependency-free binary"
+  ],
+  "publicApiSurface": [
+    "lefthook install",
+    "lefthook run <hook-name>",
+    "lefthook uninstall",
+    "lefthook dump",
+    "lefthook validate",
+    "lefthook add <hook-name>",
+    "lefthook version",
+    "lefthook self-update",
+    "lefthook check-install",
+    "LEFTHOOK=0 (env var to disable)",
+    "LEFTHOOK_VERBOSE=1 (env var for debug logs)",
+    "LEFTHOOK_OUTPUT (env var for output control)",
+    "LEFTHOOK_EXCLUDE (env var for tag exclusion)",
+    "lefthook.yml configuration file",
+    "lefthook-local.yml local overrides"
+  ]
+}

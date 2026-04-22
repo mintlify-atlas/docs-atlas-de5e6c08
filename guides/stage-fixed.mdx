@@ -1,0 +1,115 @@
+---
+title: "Auto-stage linter auto-fixes using stage_fixed: true"
+description: "Use stage_fixed to automatically run git add on files after a linter auto-fixes them, so your final commit always includes the corrected code."
+---
+
+When you run a linter with an auto-fix flag (like `eslint --fix` or `rubocop --auto-correct`), the linter rewrites files on disk but those changes aren't automatically part of your commit. You'd have to manually `git add` the fixed files before committing. The `stage_fixed` option eliminates that step.
+
+<Note>
+`stage_fixed` only works with the `pre-commit` hook. It has no effect in other hooks.
+</Note>
+
+## How it works
+
+When `stage_fixed: true` is set on a command, Lefthook runs `git add` on the affected files after the command completes. This means:
+
+1. You stage some files and run `git commit`
+2. Lefthook runs your linter with `--fix` (or equivalent)
+3. The linter auto-corrects issues in your staged files
+4. Lefthook re-stages those files with `git add`
+5. Your commit includes both your original changes and the linter's fixes
+
+The files that get re-staged are determined by:
+- The `{staged_files}` template, if no `files` option is set
+- The result of the `files` command, if you've set a custom `files` option
+- Any `glob` or `exclude` filters you've configured are applied before staging
+
+## Basic example
+
+```yaml
+# lefthook.yml
+pre-commit:
+  commands:
+    lint:
+      run: yarn lint {staged_files} --fix
+      stage_fixed: true
+```
+
+With this config, running `git commit` will lint your staged JS/TS files, apply any auto-fixes, and include those fixes in the commit automatically.
+
+## Works well with
+
+`stage_fixed` is most useful with tools that support auto-correction:
+
+<CodeGroup>
+```yaml ESLint
+pre-commit:
+  commands:
+    eslint:
+      glob: "*.{js,ts,jsx,tsx}"
+      run: npx eslint --fix -- {staged_files}
+      stage_fixed: true
+```
+
+```yaml RuboCop
+pre-commit:
+  commands:
+    rubocop:
+      glob: "*.rb"
+      run: bundle exec rubocop --auto-correct-all -- {staged_files}
+      stage_fixed: true
+```
+
+```yaml Prettier
+pre-commit:
+  commands:
+    prettier:
+      glob: "*.{js,ts,css,json,md}"
+      run: npx prettier --write {staged_files}
+      stage_fixed: true
+```
+
+```yaml gofmt
+pre-commit:
+  commands:
+    gofmt:
+      glob: "*.go"
+      run: gofmt -w {staged_files}
+      stage_fixed: true
+```
+</CodeGroup>
+
+## Running multiple fixers
+
+You can combine multiple auto-fixing commands. Each one stages its own results independently:
+
+```yaml
+# lefthook.yml
+pre-commit:
+  parallel: true
+  commands:
+    stylelint:
+      tags: frontend style
+      glob: "*.js"
+      run: yarn stylelint {staged_files}
+      stage_fixed: true
+    rubocop:
+      tags: backend style
+      glob: "*.rb"
+      run: bundle exec rubocop --force-exclusion -- {all_files}
+      stage_fixed: true
+```
+
+## Disable at runtime with `--no-stage-fixed`
+
+If you want to run a hook without auto-staging (for example, to review what a linter would change before including those changes), pass `--no-stage-fixed` to `lefthook run`:
+
+```bash
+lefthook run pre-commit --no-stage-fixed
+```
+
+This ignores all `stage_fixed: true` settings for that run only.
+
+<Warning>
+Auto-staged changes are committed without a second review. If a linter makes a large or unexpected change, it will be in your commit. Run `git diff --cached` before committing if you want to check what's staged, or use `--no-stage-fixed` to review linter output before staging.
+</Warning>

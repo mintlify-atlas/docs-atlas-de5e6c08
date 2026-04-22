@@ -1,0 +1,430 @@
+---
+title: "Controlling execution: skip, output, and failure options"
+description: "Control how lefthook runs hooks: parallel and piped modes, skip and only conditions, tag filtering, output verbosity, colors, and failure behavior."
+---
+
+Lefthook gives you precise control over when hooks run, how their commands execute, what appears in the output, and how failures are reported. This page covers all the options that govern execution behavior—from parallelism to skip conditions to terminal output.
+
+## Execution modes
+
+### `parallel`
+
+**Default:** `false`
+
+Run all commands and scripts in the hook concurrently. Without this option, lefthook executes them one by one in definition order.
+
+```yaml
+# lefthook.yml
+
+pre-commit:
+  parallel: true
+  commands:
+    lint:
+      run: yarn lint
+    test:
+      run: yarn test
+```
+
+You can also enable parallel execution for a nested [group](/configuration/jobs#group) of jobs while the outer hook runs sequentially, or vice versa.
+
+<Note>
+Setting both `parallel: true` and `piped: true` on the same hook is not allowed. Lefthook will return an error.
+</Note>
+
+### `piped`
+
+**Default:** `false`
+
+Execute commands in order and stop immediately if any step fails. Use this when each step depends on the previous one completing successfully.
+
+```yaml
+# lefthook.yml
+
+database:
+  piped: true
+  commands:
+    1_create:
+      run: rake db:create
+    2_migrate:
+      run: rake db:migrate
+    3_seed:
+      run: rake db:seed
+```
+
+### `follow`
+
+**Default:** `false`
+
+Stream each command's stdout in real time as it runs, instead of buffering and printing after completion.
+
+```yaml
+# lefthook.yml
+
+pre-push:
+  follow: true
+  commands:
+    backend-tests:
+      run: bundle exec rspec
+    frontend-tests:
+      run: yarn test
+```
+
+<Warning>
+Avoid combining `follow: true` with `parallel: true`. Output from concurrent processes will be interleaved and hard to read.
+</Warning>
+
+## Skipping execution
+
+### `skip`
+
+Skip a command, script, or entire hook under specific conditions. You can combine multiple conditions in a list—any matching condition causes the skip.
+
+**Supported values:**
+
+| Value | Skips when |
+|-------|-----------|
+| `true` | Always skips. |
+| `merge` | Currently in a merge Git state. |
+| `rebase` | Currently in a rebase Git state. |
+| `merge-commit` | The current HEAD is a merge commit. |
+| `ref: <branch>` | On a specific branch. Supports glob patterns. |
+| `run: <command>` | The shell command exits with code 0. |
+
+```yaml
+# lefthook.yml
+
+pre-commit:
+  commands:
+    lint:
+      skip:
+        - merge
+        - rebase
+      run: yarn lint
+```
+
+Skip the whole hook on a branch:
+
+```yaml
+pre-commit:
+  skip:
+    - ref: main
+  commands:
+    lint:
+      run: yarn lint
+```
+
+Skip using a glob pattern for branches:
+
+```yaml
+pre-commit:
+  skip:
+    - ref: dev/*
+  commands:
+    lint:
+      run: yarn lint
+```
+
+Skip based on a shell command result:
+
+```yaml
+pre-commit:
+  skip:
+    - run: test "${NO_HOOK}" -eq 1
+  commands:
+    lint:
+      run: yarn lint
+```
+
+<Tip>
+Set `skip: true` in `lefthook-local.yml` to disable a specific command on your machine without modifying the shared config.
+
+```yaml
+# lefthook-local.yml
+
+pre-commit:
+  commands:
+    lint:
+      skip: true
+```
+</Tip>
+
+### `only`
+
+Run a command, script, or hook only when specific conditions are met. It is the inverse of `skip`—execution is skipped unless the condition passes. Accepts the same values as `skip`.
+
+<Note>
+`skip` takes precedence over `only`. If a condition matches both, the execution is skipped.
+</Note>
+
+```yaml
+# lefthook.yml
+
+pre-commit:
+  commands:
+    lint:
+      skip: rebase
+      run: yarn lint
+    test:
+      skip: rebase
+      run: yarn test
+    lint-on-rebase:
+      only: rebase
+      run: yarn lint-quickly
+```
+
+Run the whole hook only on specific branches:
+
+```yaml
+pre-commit:
+  only:
+    - ref: dev/*
+  commands:
+    lint:
+      run: yarn lint
+```
+
+## Tag-based filtering
+
+### `tags`
+
+Assign one or more tags to a command or script. Tags let you selectively exclude groups of commands using `exclude_tags` or the `LEFTHOOK_EXCLUDE` environment variable.
+
+```yaml
+# lefthook.yml
+
+pre-commit:
+  commands:
+    lint:
+      tags:
+        - frontend
+        - js
+      run: yarn lint
+    test:
+      tags:
+        - backend
+        - ruby
+      run: bundle exec rspec
+```
+
+### `exclude_tags`
+
+Exclude all commands or scripts that match one or more tags. Set at the hook level. Can be overridden at runtime by setting `LEFTHOOK_EXCLUDE`.
+
+```yaml
+# lefthook.yml
+
+pre-push:
+  commands:
+    packages-audit:
+      tags:
+        - frontend
+        - security
+      run: yarn audit
+    gems-audit:
+      tags:
+        - backend
+        - security
+      run: bundle audit
+```
+
+```yaml
+# lefthook-local.yml
+
+pre-push:
+  exclude_tags:
+    - frontend   # skip packages-audit locally
+```
+
+```bash
+# Skip at runtime without changing any file
+LEFTHOOK_EXCLUDE=frontend lefthook run pre-push
+```
+
+## Output control
+
+### `output`
+
+**Default:** all sections enabled
+
+Choose which parts of lefthook's output to print. Set to `false` to suppress everything except errors, or list exactly the sections you want.
+
+```yaml
+# lefthook.yml
+
+output:
+  - meta           # lefthook version header
+  - summary        # summary block of passed/failed steps
+  - empty_summary  # summary heading even when nothing ran
+  - success        # successful steps
+  - failure        # failed steps
+  - execution      # general execution logs (alias: jobs)
+  - execution_out  # stdout/stderr of each command (alias: jobs_out)
+  - execution_info # "EXECUTE > ..." lines before each command (alias: jobs_info)
+  - skips          # messages about skipped steps
+  - setup          # output from setup instructions
+```
+
+Extend this list at runtime without editing the file:
+
+```bash
+LEFTHOOK_OUTPUT="meta,success,summary" lefthook run pre-commit
+```
+
+### `colors`
+
+**Default:** `auto`
+
+Enable or disable colored output. Set to `false` to disable. Provide custom hex or ANSI codes to theme the output. Override with `--colors` on the CLI, `NO_COLOR=true` to force off, or `CLICOLOR_FORCE=true` to force on.
+
+```yaml
+# lefthook.yml
+
+colors: false
+```
+
+```yaml
+# lefthook.yml
+
+colors:
+  cyan: 14
+  gray: 244
+  green: '#32CD32'
+  red: '#FF1493'
+  yellow: '#F0E68C'
+```
+
+## Failure behavior
+
+### `fail_text`
+
+A custom message displayed when a command or script fails. Useful for guiding developers toward a fix.
+
+```yaml
+# lefthook.yml
+
+pre-commit:
+  commands:
+    lint:
+      run: yarn lint
+      fail_text: Add node executable to $PATH
+```
+
+Output:
+
+```
+SUMMARY: (done in 0.01 seconds)
+🥊  lint: Add node executable to $PATH env
+```
+
+### `fail_on_changes`
+
+**Default:** `never`
+
+Control whether lefthook exits with a non-zero status when tracked files are modified during hook execution. Pair this with `stage_fixed` for auto-formatting workflows.
+
+| Value | Behavior |
+|-------|----------|
+| `never` | Never fail due to file modifications (default). |
+| `always` | Always fail if any tracked files change. |
+| `ci` | Fail only when the `CI` environment variable is set. |
+| `non-ci` | Fail only when `CI` is _not_ set (useful with [autofix.ci](https://autofix.ci)). |
+
+```yaml
+# lefthook.yml
+
+pre-commit:
+  parallel: true
+  fail_on_changes: ci
+  commands:
+    lint:
+      run: yarn lint --fix {staged_files}
+      stage_fixed: true
+```
+
+### `fail_on_changes_diff`
+
+**Default:** diff shown only in CI
+
+When `fail_on_changes` triggers, this boolean controls whether lefthook prints a diff of the modified files. Set to `true` to always show it, or `false` to suppress it.
+
+```yaml
+# lefthook.yml
+
+pre-commit:
+  fail_on_changes: always
+  fail_on_changes_diff: true
+  commands:
+    lint:
+      run: yarn lint
+```
+
+## Auto-staging fixed files
+
+### `stage_fixed`
+
+**Default:** `false` · **Pre-commit only**
+
+After the command or script runs, automatically call `git add` on the affected files. This ensures that files modified by auto-formatters are included in the commit.
+
+- For commands with a `files` option, lefthook uses the output of that command to determine which files to stage.
+- For all other commands and scripts, it stages `{staged_files}` filtered by any `glob` or `exclude` settings.
+
+```yaml
+# lefthook.yml
+
+pre-commit:
+  commands:
+    lint:
+      run: npm run lint --fix {staged_files}
+      stage_fixed: true
+```
+
+## Interactive commands
+
+### `interactive`
+
+**Default:** `false`
+
+Attach the terminal's TTY to the command so it can prompt for user input. Interactive commands run after all non-interactive ones—unless `piped: true` is active. This option has no effect when `no_tty: true` is set.
+
+```yaml
+prepare-commit-msg:
+  commands:
+    aiautocommit:
+      interactive: true
+      run: aiautocommit commit --output-file "{1}"
+      env:
+        LOG_LEVEL: info
+      skip:
+        - run: "! which aiautocommit"
+```
+
+### `use_stdin`
+
+Pass the process's stdin directly to the command or script. Required for `pre-push` scripts that read push data with `while read ...`. Without this option, lefthook's pseudo-TTY keeps stdin open and the command hangs.
+
+```yaml
+# lefthook.yml
+
+pre-push:
+  scripts:
+    "do-the-magic.sh":
+      runner: bash
+      use_stdin: true
+```
+
+<Note>
+If multiple commands or scripts have `use_stdin: true`, only the first one to execute will receive the data. Others will receive nothing.
+</Note>
+
+### `no_tty` (global)
+
+**Default:** `false`
+
+Hide the spinner and other interactive UI elements globally. Equivalent to passing `--no-tty` to `lefthook run`. When set, `interactive` is ignored for all commands.
+
+```yaml
+# lefthook.yml
+
+no_tty: true
+```

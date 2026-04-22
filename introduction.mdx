@@ -1,0 +1,42 @@
+---
+title: "What is Lefthook? Fast, parallel Git hooks manager"
+description: "Lefthook is a fast, dependency-free Git hooks manager that runs linters and scripts in parallel and supports any language or project type."
+---
+
+Lefthook is a Git hooks manager written in Go. You define which commands to run for each Git hook — linters, formatters, tests, custom scripts — in a single `lefthook.yml` file. When you run `lefthook install`, it writes small scripts into your repository's `.git/hooks/` directory. From that point on, every `git commit`, `git push`, or any other Git operation triggers `lefthook run` automatically with the hooks you configured.
+
+Lefthook works in any project regardless of programming language. It ships as a single static binary with no runtime dependencies, so it runs consistently on local machines, in Docker containers, and in CI environments. Configuration supports YAML, TOML, JSON, and JSONC formats.
+
+## Example configuration
+
+Run linters in parallel on every `pre-commit`:
+
+```yaml lefthook.yml
+pre-commit:
+  parallel: true
+  jobs:
+    - run: yarn run stylelint --fix {staged_files}
+      glob: "*.css"
+      stage_fixed: true
+
+    - run: yarn run eslint --fix "{staged_files}"
+      glob:
+        - "*.ts"
+        - "*.js"
+        - "*.tsx"
+        - "*.jsx"
+      stage_fixed: true
+```
+
+Lefthook passes only the staged files that match each glob pattern to the corresponding command, keeping runs fast even in large repositories.
+
+## Get started
+
+<CardGroup cols={2}>
+  <Card title="Install Lefthook" icon="download" href="/installation">
+    Install via npm, gem, pipx, Homebrew, winget, or download the binary directly.
+  </Card>
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Write your first hook configuration and run it in under five minutes.
+  </Card>
+</CardGroup>

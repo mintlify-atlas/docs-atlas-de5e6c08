@@ -1,0 +1,91 @@
+---
+title: "lefthook install — set up Git hooks in your repo"
+description: "Run lefthook install to write hook scripts into .git/hooks/ and create a starter lefthook.yml if one does not already exist in your project."
+---
+
+The `lefthook install` command reads your `lefthook.yml` configuration and writes the corresponding hook scripts into `.git/hooks/`. If no configuration file exists yet, it creates a blank `lefthook.yml` so you have a starting point. You do not need to reinstall after every edit — lefthook reads the config file fresh on every Git hook invocation.
+
+<Note>
+The NPM package `lefthook` runs install automatically in a `postinstall` script. For projects that do not use the NPM package, run `lefthook install` once after cloning the repository.
+</Note>
+
+## Usage
+
+```bash
+lefthook install [hook-names...] [options]
+```
+
+## Flags
+
+| Flag | Short | Description |
+|---|---|---|
+| `--force` | `-f` | Overwrite `.old` backup files and proceed even when `core.hooksPath` is set in Git config. |
+| `--reset-hooks-path` | `-r` | Automatically unset the `core.hooksPath` Git configuration before installing. |
+| `--verbose` | `-v` | Enable debug log output. |
+
+## Installing specific hooks
+
+You can pass one or more hook names to install only those hooks instead of all hooks defined in the config:
+
+```bash
+lefthook install pre-commit pre-push
+```
+
+This is useful when you are iterating on a single hook and want to keep the others unchanged.
+
+## Example walkthrough
+
+<Steps>
+  <Step title="Create a config file">
+    If you don't have a `lefthook.yml` yet, run install with no arguments to generate one:
+
+    ```bash
+    lefthook install
+    ```
+
+    Lefthook creates an empty `lefthook.yml` and installs hooks. You'll see output similar to:
+
+    ```
+    sync hooks: ✔️ pre-commit
+    ```
+  </Step>
+
+  <Step title="Add your hook configuration">
+    Edit `lefthook.yml` to define the commands you want to run:
+
+    ```yaml
+    pre-commit:
+      jobs:
+        - name: lint
+          run: yarn lint --fix {staged_files}
+        - name: typecheck
+          run: yarn tsc --noEmit
+    ```
+  </Step>
+
+  <Step title="Reinstall after structural changes">
+    After adding new hook groups (e.g. adding a `pre-push` section for the first time), run install again to register the new hook script with Git:
+
+    ```bash
+    lefthook install
+    ```
+
+    Changes to existing commands within an already-installed hook do not require a reinstall.
+  </Step>
+</Steps>
+
+## Handling `core.hooksPath`
+
+If your Git configuration sets `core.hooksPath` to a custom directory, lefthook will warn you and refuse to install by default. You have two options:
+
+```bash
+# Automatically unset core.hooksPath and install
+lefthook install --reset-hooks-path
+
+# Proceed anyway, keeping whatever core.hooksPath is set to
+lefthook install --force
+```
+
+<Warning>
+Using `--force` without `--reset-hooks-path` installs hooks into `.git/hooks/`, but Git may still use the directory from `core.hooksPath`. Prefer `--reset-hooks-path` unless you have a specific reason to keep that setting.
+</Warning>

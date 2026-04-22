@@ -1,0 +1,87 @@
+---
+title: "lefthook dump — inspect the merged config output"
+description: "Use lefthook dump to print the fully merged configuration lefthook actually uses, combining lefthook.yml, extends, remotes, and local overrides."
+---
+
+The `lefthook dump` command prints the complete configuration lefthook will use at runtime, after merging every source: the main `lefthook.yml`, any `extends` files, remote configs, and `lefthook-local.yml` overrides. It is the fastest way to understand exactly what lefthook sees — especially when layered configurations make the effective settings non-obvious.
+
+## Usage
+
+```bash
+lefthook dump [options]
+```
+
+## Flags
+
+| Flag | Short | Default | Description |
+|---|---|---|---|
+| `--format` | `-f` | `yaml` | Output format: `yaml`, `toml`, or `json`. |
+
+## Reading the merged config
+
+Running `dump` with no flags prints the config as YAML:
+
+```bash
+lefthook dump
+```
+
+Example output:
+
+```yaml
+pre-commit:
+  jobs:
+    - name: lint
+      run: yarn lint --fix {staged_files}
+      tags:
+        - frontend
+    - name: typecheck
+      run: yarn tsc --noEmit
+```
+
+## Choosing an output format
+
+<CodeGroup>
+
+```bash YAML (default)
+lefthook dump --format yaml
+```
+
+```bash TOML
+lefthook dump --format toml
+```
+
+```bash JSON
+lefthook dump --format json
+```
+
+</CodeGroup>
+
+The JSON format is particularly useful when you want to process or query the config programmatically:
+
+```bash
+lefthook dump --format json | jq '.["pre-commit"].jobs[].name'
+```
+
+## Common debugging scenarios
+
+**You added a remote config and want to verify it merged correctly:**
+
+```bash
+lefthook dump | grep -A 10 "pre-push:"
+```
+
+**You have a `lefthook-local.yml` and want to confirm your local overrides took effect:**
+
+```bash
+lefthook dump
+```
+
+The output reflects the final merged state, so any `skip: true` or changed `run:` values from your local override will already be incorporated.
+
+<Tip>
+Use `lefthook dump` together with `lefthook validate` as part of a CI step: dump the merged config to verify it looks correct, then validate it against the JSON schema to catch any structural errors.
+</Tip>
+
+<Note>
+`lefthook dump` never runs any hooks. It is a read-only introspection command and safe to run at any time.
+</Note>

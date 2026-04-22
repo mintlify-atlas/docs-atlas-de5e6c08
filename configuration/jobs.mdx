@@ -1,0 +1,407 @@
+---
+title: "Jobs, commands, and scripts: full option reference"
+description: "Define tasks in lefthook hooks using jobs (recommended), commands (legacy), or scripts, with full option reference and real-world examples."
+---
+
+Lefthook offers three ways to define the work that runs inside a hook: `jobs`, `commands`, and `scripts`. The `jobs` array, added in version 1.10.0, is the recommended approach because it supports grouping, is more composable, and merges cleanly across `extends` and local configs.
+
+## Comparison of approaches
+
+| Feature | `jobs` | `commands` | `scripts` |
+|---------|--------|-----------|---------|
+| Added in | 1.10.0 | original | original |
+| Inline shell command | `run` | `run` | — |
+| Script file | `script` | — | key is filename |
+| Named for merging | `name` | key name | key name |
+| Grouping with nested jobs | `group` | — | — |
+| Priority ordering | — | `priority` | `priority` |
+
+## `jobs` (recommended)
+
+`jobs` is an array of job definitions. Each job runs either an inline shell command (`run`) or a script file (`script`). Jobs can optionally be wrapped in a `group` for nested parallelism or piped execution.
+
+```yaml
+# lefthook.yml
+
+pre-commit:
+  parallel: true
+  jobs:
+    - name: migrate
+      root: backend/
+      glob: "db/migrations/*"
+      group:
+        piped: true
+        jobs:
+          - run: bundle install
+          - run: rails db:migrate
+    - run: yarn lint --fix {staged_files}
+      root: frontend/
+      stage_fixed: true
+    - run: bundle exec rubocop
+      root: backend/
+    - script: verify.sh
+      runner: bash
+```
+
+Named jobs (with a `name` field) are merged across `extends` and `lefthook-local.yml`. Unnamed jobs are appended in definition order.
+
+## `commands` (legacy)
+
+`commands` is a map where each key is a command name and the value is its options. Command names are used for merging and appear in the output summary.
+
+```yaml
+# lefthook.yml
+
+pre-commit:
+  commands:
+    lint:
+      run: yarn lint
+    test:
+      run: yarn test
+```
+
+## `scripts`
+
+`scripts` is a map where each key is a script filename (relative to `source_dir/<hook-name>/`). Scripts are executed with a `runner` command.
+
+<Steps>
+  <Step title="Create the script directory">
+    ```bash
+    lefthook add -d pre-commit
+    ```
+  </Step>
+  <Step title="Write your script">
+    ```bash
+    # .lefthook/pre-commit/lint.sh
+
+    echo "Running custom linter..."
+    yarn lint
+    ```
+  </Step>
+  <Step title="Register it in lefthook.yml">
+    ```yaml
+    # lefthook.yml
+
+    pre-commit:
+      scripts:
+        "lint.sh":
+          runner: bash
+    ```
+  </Step>
+</Steps>
+
+## Job options
+
+### `name`
+
+A display name for the job. Shown in the summary output. When set, jobs with the same name are merged across `extends` and `lefthook-local.yml` instead of duplicated.
+
+```yaml
+pre-commit:
+  jobs:
+    - name: lint and fix
+      run: yarn run eslint --fix {staged_files}
+```
+
+### `run`
+
+The shell command to execute. Uses `sh` syntax. Supports [file templates](/configuration/files-and-filters) like `{staged_files}`, `{push_files}`, `{all_files}`, `{files}`, and `{cmd}`, as well as Git hook arguments (`{0}`, `{1}`, etc.) and `{lefthook_job_name}`.
+
+```yaml
+pre-commit:
+  jobs:
+    - run: yarn eslint {staged_files}
+      glob: "*.{js,ts}"
+```
+
+You can write multi-line scripts inline:
+
+```yaml
+pre-commit:
+  jobs:
+    - name: a whole script in a run
+      run: |
+        for file in $(ls .); do
+          yarn lint $file
+        done
+```
+
+### `script`
+
+Name of a script file to execute from `source_dir/<hook-name>/`. Requires a `runner`.
+
+```yaml
+pre-commit:
+  jobs:
+    - script: linter.sh
+      runner: bash
+```
+
+### `runner`
+
+The executable used to run a script file. Called as `<runner> <path-to-script>`.
+
+```yaml
+pre-commit:
+  scripts:
+    "lint.js":
+      runner: node
+    "check.go":
+      runner: go run
+    "verify.rb":
+      runner: ruby
+```
+
+### `args`
+
+**Added in:** 2.0.5
+
+Arguments appended to the command or passed to the script. Supports the same templates as `run`. When specified, Git-provided arguments are omitted. Specifying no `args` or `args: "{0}"` is equivalent.
+
+```yaml
+pre-commit:
+  jobs:
+    - script: check-python-files.sh
+      runner: bash
+      args: "{staged_files}"
+      glob: "*.py"
+
+    - run: yarn lint
+      args: "{staged_files}"
+      glob:
+        - "*.ts"
+        - "*.js"
+```
+
+### `group`
+
+Nest a set of jobs with their own `parallel` or `piped` flow. Options `env`, `root`, `glob`, and `exclude` placed on the group are inherited by all nested jobs.
+
+```yaml
+pre-commit:
+  jobs:
+    - name: db-setup
+      root: backend/
+      group:
+        piped: true
+        jobs:
+          - run: bundle install
+          - run: rails db:create
+          - run: rails db:migrate
+```
+
+To make a group mergeable via name:
+
+```yaml
+pre-commit:
+  jobs:
+    - name: frontend checks
+      group:
+        parallel: true
+        jobs:
+          - name: lint
+            run: yarn lint
+          - name: test
+            run: yarn test
+```
+
+### `env`
+
+Environment variables to set for this job. Supports expanding existing variables.
+
+```yaml
+pre-commit:
+  commands:
+    test:
+      env:
+        RAILS_ENV: test
+      run: bundle exec rspec
+```
+
+Use `lefthook-local.yml` to extend `$PATH` for tools installed via version managers:
+
+```yaml
+# lefthook-local.yml
+
+pre-commit:
+  commands:
+    test:
+      env:
+        PATH: $PATH:/home/me/.nvm/versions/node/v20.0.0/bin
+```
+
+### `root`
+
+Change the working directory for the command. Also filters file paths from templates: if all staged files are outside the `root`, the command is skipped.
+
+```yaml
+# lefthook.yml
+
+pre-commit:
+  commands:
+    lint:
+      root: "client/"
+      glob: "*.{js,ts}"
+      run: yarn eslint --fix {staged_files}
+```
+
+<Note>
+Glob patterns are always evaluated from the actual Git repository root—`root` does not affect glob matching.
+</Note>
+
+### `skip`
+
+Skip this job under specific conditions. See [Controlling execution](/configuration/execution#skip) for all possible values.
+
+```yaml
+pre-commit:
+  commands:
+    lint:
+      skip:
+        - merge
+        - rebase
+      run: yarn lint
+```
+
+### `only`
+
+Run this job only when specific conditions are met. The inverse of `skip`.
+
+```yaml
+pre-commit:
+  commands:
+    lint-on-rebase:
+      only: rebase
+      run: yarn lint-quickly
+```
+
+### `tags`
+
+Label a job with one or more tags. Use `exclude_tags` at the hook level to skip all jobs bearing a given tag.
+
+```yaml
+pre-commit:
+  commands:
+    lint:
+      tags:
+        - frontend
+        - js
+      run: yarn lint
+    test:
+      tags:
+        - backend
+        - ruby
+      run: bundle exec rspec
+```
+
+### `fail_text`
+
+A message to display when the job fails, helping developers understand what to fix.
+
+```yaml
+pre-commit:
+  commands:
+    lint:
+      run: yarn lint
+      fail_text: Add node executable to $PATH
+```
+
+### `stage_fixed`
+
+**Default:** `false` · **Pre-commit only**
+
+After running the command, automatically call `git add` on the affected files. This is useful for auto-formatting tools that fix files in place.
+
+```yaml
+pre-commit:
+  commands:
+    lint:
+      run: npm run lint --fix {staged_files}
+      stage_fixed: true
+```
+
+### `interactive`
+
+**Default:** `false`
+
+Attach the terminal's TTY to this command so it can prompt for user input. Interactive jobs run after all non-interactive ones unless `piped: true` is set. Has no effect when `no_tty: true`.
+
+### `use_stdin`
+
+Pass the process's stdin directly to this command. Required for `pre-push` scripts that read push data with `while read ...`. Without this, lefthook's pseudo-TTY will hold stdin open.
+
+```yaml
+pre-push:
+  scripts:
+    "do-the-magic.sh":
+      runner: bash
+      use_stdin: true
+```
+
+### `priority`
+
+**Default:** `0` (runs last)
+
+Set the execution order for sequential runs (`parallel: false` or `piped: true`). Lower numbers run first. A value of `0` is treated as positive infinity—those jobs always run last.
+
+```yaml
+post-checkout:
+  piped: true
+  commands:
+    db-create:
+      priority: 1
+      run: rails db:create
+    db-migrate:
+      priority: 2
+      run: rails db:migrate
+    db-seed:
+      priority: 3
+      run: rails db:seed
+```
+
+## Real-world example
+
+The following is the `pre-commit` hook from the lefthook project itself, demonstrating `parallel`, named jobs, `group`, `glob`, `exclude`, `tags`, and `stage_fixed` together:
+
+```yaml
+# lefthook.yml
+
+assert_lefthook_installed: true
+skip_lfs: true
+
+output:
+  - meta
+  - summary
+  - jobs
+
+pre-commit:
+  parallel: true
+  setup:
+    - run: command -v typos || brew install typos-cli
+    - run: command -v lychee || brew install lychee
+  jobs:
+    - name: lint & test
+      glob: "*.go"
+      group:
+        jobs:
+          - run: make lint
+            tags: lint
+            stage_fixed: true
+          - run: make test
+            tags: test
+
+    - name: check links
+      tags: docs
+      run: lychee --max-concurrency 3 -- {staged_files}
+      glob: "*.md"
+      exclude:
+        - CHANGELOG.md
+
+    - name: fix typos
+      tags: lint
+      run: typos --write-changes {staged_files}
+      exclude:
+        - "*.svg"
+        - "*.png"
+      stage_fixed: true
+```

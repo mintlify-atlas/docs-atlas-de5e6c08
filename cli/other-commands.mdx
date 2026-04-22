@@ -1,0 +1,155 @@
+---
+title: "lefthook add, version, self-update, and check-install"
+description: "Reference for lefthook add, version, self-update, and check-install: utility commands for adding hook scripts, updating the binary, and verifying your setup."
+---
+
+In addition to the core `install`, `run`, and `uninstall` commands, lefthook ships several utility commands for day-to-day maintenance. This page documents `add`, `version`, `self-update`, and `check-install`.
+
+---
+
+## lefthook add
+
+The `add` command installs a single Git hook and optionally creates the scripts directory for that hook. Use it when you want to manage a hook through a script file in `.lefthook/` rather than an inline `run:` string.
+
+### Usage
+
+```bash
+lefthook add <hook-name> [options]
+```
+
+### Flags
+
+| Flag | Alias | Description |
+|---|---|---|
+| `--create-dirs` | `--dirs` | Create the `.lefthook/<hook-name>/` directory for storing script files. |
+| `--force` | `-f` | Overwrite an existing hook script without prompting. |
+| `--verbose` | `-v` | Enable debug log output. |
+
+### Example: adding a script-based pre-push hook
+
+<Steps>
+  <Step title="Add the hook and create the scripts directory">
+    ```bash
+    lefthook add pre-push --create-dirs
+    ```
+
+    This installs the `pre-push` Git hook and creates `.lefthook/pre-push/`.
+  </Step>
+
+  <Step title="Configure the hook in lefthook.yml">
+    ```yaml
+    # lefthook.yml
+    pre-push:
+      jobs:
+        - script: "audit.sh"
+          runner: bash
+    ```
+  </Step>
+
+  <Step title="Write your script">
+    ```bash
+    vim .lefthook/pre-push/audit.sh
+    ```
+
+    The script receives any arguments Git passes to the hook. Running `git push` will now execute `bash audit.sh`.
+  </Step>
+</Steps>
+
+---
+
+## lefthook version
+
+The `version` command prints the current version of the lefthook binary.
+
+### Usage
+
+```bash
+lefthook version [options]
+```
+
+### Flags
+
+| Flag | Short | Description |
+|---|---|---|
+| `--full` | `-f` | Print the full version string including the commit hash. |
+| `--verbose` | `-v` | Alias for `--full`; also prints the commit hash. |
+
+### Example
+
+```bash
+lefthook version
+# 1.9.2
+
+lefthook version --full
+# 1.9.2 bb099d13c24114d2859815d9d23671a32932ffe2
+```
+
+---
+
+## lefthook self-update
+
+The `self-update` command downloads and replaces the lefthook binary with the latest release from GitHub.
+
+<Note>
+`self-update` is only available when you installed lefthook by downloading the binary directly from GitHub Releases or by building from source. If you installed lefthook through a package manager (Homebrew, npm, gem, etc.), use that package manager's update command instead.
+</Note>
+
+### Usage
+
+```bash
+lefthook self-update [options]
+```
+
+### Flags
+
+| Flag | Short | Description |
+|---|---|---|
+| `--yes` | `-y` | Skip the y/n confirmation prompt and update immediately. |
+| `--force` | `-f` | Force reinstallation even if you are already on the latest version. |
+| `--verbose` | `-v` | Enable debug log output. |
+
+### Example
+
+```bash
+# Interactive update (prompts for confirmation)
+lefthook self-update
+
+# Non-interactive update for use in scripts
+lefthook self-update --yes
+```
+
+---
+
+## lefthook check-install
+
+The `check-install` command verifies that lefthook hooks are installed and up to date in the current repository. It is designed for scripting and CI workflows where you want to assert that the installation state is correct.
+
+### Usage
+
+```bash
+lefthook check-install [options]
+```
+
+### Flags
+
+| Flag | Short | Description |
+|---|---|---|
+| `--verbose` | `-v` | Enable debug log output. |
+
+### Exit codes
+
+| Code | Meaning |
+|---|---|
+| `0` | Hooks are installed and synchronized with the current config. |
+| `1` | Hooks are not installed or are stale and need a sync. |
+
+### Example: using check-install in CI
+
+```bash
+# Fail the CI job if hooks are out of date
+lefthook check-install || lefthook install
+```
+
+<Tip>
+Use `check-install` in a CI step to detect when a developer forgot to run `lefthook install` after pulling changes that added new hooks.
+</Tip>

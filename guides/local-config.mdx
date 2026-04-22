@@ -1,0 +1,169 @@
+---
+title: "Per-developer hook overrides with lefthook-local.yml"
+description: "Use lefthook-local.yml to add personal overrides on top of your team's shared lefthook.yml without committing them to the repository."
+---
+
+`lefthook-local.yml` is a personal configuration file that merges on top of your project's shared `lefthook.yml`. It lets you adjust hook behavior for your local machine — skip commands you don't need, wrap them in Docker, or add hooks no one else runs — without touching the shared config your teammates rely on.
+
+Because it's personal, you should add it to `.gitignore` (or your global `~/.gitignore`) so it never gets committed.
+
+<Tip>
+Add `lefthook-local.yml` to your global `~/.gitignore` so you get local overrides automatically in every project, without having to gitignore it per repo.
+</Tip>
+
+## How the merge works
+
+Lefthook merges `lefthook-local.yml` on top of `lefthook.yml` when it runs. The full merge order is:
+
+1. `lefthook.yml` — the shared team config
+2. Any files listed under `extends` — local file extensions
+3. Any `remotes` configs — shared remote configs
+4. `lefthook-local.yml` — your personal overrides (wins over everything)
+
+Within a hook, commands and jobs are matched by name. If a name matches, the local config's properties are merged into the shared one. New names are appended as additional jobs.
+
+## Common use cases
+
+### Skip a job you don't need
+
+If you're a backend developer who doesn't want to run frontend checks on every commit, set `skip: true` on the relevant command in `lefthook-local.yml`:
+
+```yaml
+# lefthook.yml
+pre-commit:
+  commands:
+    lint:
+      run: bundle exec rubocop -- {staged_files}
+      glob: "*.rb"
+    check-links:
+      run: lychee -- {staged_files}
+```
+
+```yaml
+# lefthook-local.yml
+pre-commit:
+  commands:
+    check-links:
+      skip: true
+```
+
+### Wrap commands for a Docker environment
+
+If your team runs commands directly but you work inside Docker, use the `{cmd}` template to wrap the original command:
+
+```yaml
+# lefthook-local.yml
+pre-commit:
+  commands:
+    lint:
+      run: docker-compose run backend {cmd}
+```
+
+Lefthook substitutes `{cmd}` with the original `run` value from `lefthook.yml`, so the final command becomes:
+
+```bash
+docker-compose run backend bundle exec rubocop -- {staged_files}
+```
+
+When using the `jobs` (named job) format, use the same `{cmd}` approach:
+
+```yaml
+# lefthook.yml
+pre-commit:
+  jobs:
+    - name: rubocop
+      run: bundle exec rubocop -A -- {staged_files}
+```
+
+```yaml
+# lefthook-local.yml
+pre-commit:
+  jobs:
+    - name: rubocop
+      run: dip {cmd}
+```
+
+### Change behavior with parallel execution
+
+You can also add or change top-level hook settings. For example, enable parallel execution locally even if the shared config runs commands sequentially:
+
+```yaml
+# lefthook-local.yml
+pre-commit:
+  parallel: true
+  commands:
+    lint:
+      run: docker-compose run backend {cmd}
+    check-links:
+      skip: true
+```
+
+### Add a local-only hook
+
+You can define hooks in `lefthook-local.yml` that don't exist in `lefthook.yml` at all. These run only on your machine:
+
+```yaml
+# lefthook-local.yml
+post-merge:
+  files: "git diff-tree -r --name-only --no-commit-id ORIG_HEAD HEAD"
+  commands:
+    dependencies:
+      glob: "Gemfile*"
+      run: docker-compose run backend bundle install
+```
+
+## Full example
+
+Here's the complete merged result from a shared config and a local override:
+
+<CodeGroup>
+```yaml lefthook.yml
+pre-commit:
+  commands:
+    lint:
+      run: bundle exec rubocop -- {staged_files}
+      glob: "*.rb"
+    check-links:
+      run: lychee -- {staged_files}
+```
+
+```yaml lefthook-local.yml
+pre-commit:
+  parallel: true
+  commands:
+    lint:
+      run: docker-compose run backend {cmd}
+    check-links:
+      skip: true
+
+post-merge:
+  files: "git diff-tree -r --name-only --no-commit-id ORIG_HEAD HEAD"
+  commands:
+    dependencies:
+      glob: "Gemfile*"
+      run: docker-compose run backend bundle install
+```
+
+```yaml Merged result
+pre-commit:
+  parallel: true
+  commands:
+    lint:
+      run: docker-compose run backend bundle exec rubocop -- {staged_files}
+      glob: "*.rb"
+    check-links:
+      run: lychee -- {staged_files}
+      skip: true
+
+post-merge:
+  files: "git diff-tree -r --name-only --no-commit-id ORIG_HEAD HEAD"
+  commands:
+    dependencies:
+      glob: "Gemfile*"
+      run: docker-compose run backend bundle install
+```
+</CodeGroup>
+
+<Note>
+You can also use `lefthook-local.yml` without a main `lefthook.yml` at all. This lets you run Lefthook locally without imposing it on your teammates.
+</Note>

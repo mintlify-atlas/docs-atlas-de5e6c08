@@ -1,0 +1,287 @@
+---
+title: "Sharing config with extends and remotes in lefthook"
+description: "Share lefthook configuration across projects using extends for local files and remotes for Git repositories, with merge order and security notes."
+---
+
+Lefthook can merge configuration from additional local files and remote Git repositories. This lets teams centralize shared hook rules in one place and pull them into every project without duplicating YAML. The `extends` option handles local files; `remotes` fetches configs from Git repos.
+
+## Merge order
+
+All config sources are merged in a fixed order. Later layers override earlier ones:
+
+<Steps>
+  <Step title="lefthook.yml">
+    Your main project config, committed to the repository.
+  </Step>
+  <Step title="extends">
+    Files listed in the `extends` option of `lefthook.yml`, merged in list order.
+  </Step>
+  <Step title="remotes">
+    Configs downloaded from remote Git repositories, merged in list order.
+  </Step>
+  <Step title="lefthook-local.yml">
+    Your personal local override. Always has the final say.
+  </Step>
+</Steps>
+
+Extends inside `lefthook-local.yml` or inside remote configs are resolved independently—each file's `extends` is relative to that file's own location.
+
+## `extends`
+
+Merge one or more additional YAML files into your config. File paths can be absolute, relative to the project root, or glob patterns.
+
+```yaml
+# lefthook.yml
+
+extends:
+  - /home/user/work/lefthook-extend.yml
+  - lefthook-extends/file.yml
+  - ../extend.yml
+  - projects/*/specific-lefthook-config.yml
+```
+
+Use `extends` to split a large config into focused files:
+
+```yaml
+# lefthook.yml
+
+extends:
+  - .lefthook/frontend.yml
+  - .lefthook/backend.yml
+  - .lefthook/infrastructure.yml
+
+pre-commit:
+  parallel: true
+```
+
+```yaml
+# .lefthook/frontend.yml
+
+pre-commit:
+  jobs:
+    - name: eslint
+      glob: "*.{js,ts,jsx,tsx}"
+      run: yarn eslint {staged_files}
+
+    - name: prettier
+      glob: "*.{js,ts,css,json}"
+      run: yarn prettier --write {staged_files}
+      stage_fixed: true
+```
+
+```yaml
+# .lefthook/backend.yml
+
+pre-commit:
+  jobs:
+    - name: rubocop
+      glob: "*.rb"
+      run: bundle exec rubocop --force-exclusion -- {staged_files}
+```
+
+## `remotes`
+
+Fetch one or more lefthook configuration files from external Git repositories and merge them into your local config. Lefthook clones or fetches the remote repository and reads the specified config files from it.
+
+```yaml
+# lefthook.yml
+
+remotes:
+  - git_url: git@github.com:evilmartians/lefthook
+    ref: v1.0.0
+    configs:
+      - examples/ruby-linter.yml
+```
+
+<Note>
+Configs from `remotes` are merged after `extends` and before `lefthook-local.yml`. Keep remote jobs independent of local steps to avoid hard-to-debug interactions.
+</Note>
+
+### Remote options
+
+#### `git_url`
+
+The URL of the Git repository. Lefthook accesses it with the credentials available on the machine.
+
+```yaml
+remotes:
+  - git_url: git@github.com:org/lefthook-configs
+```
+
+```yaml
+remotes:
+  - git_url: https://github.com/org/lefthook-configs
+```
+
+#### `ref`
+
+An optional branch or tag name to check out from the remote. If you start using `ref`, keep it specified—removing it later may cause inconsistent behavior in existing local setups.
+
+```yaml
+remotes:
+  - git_url: git@github.com:org/lefthook-configs
+    ref: v2.0.0
+    configs:
+      - hooks/pre-commit.yml
+```
+
+#### `configs`
+
+**Default:** `[lefthook.yml]`
+
+A list of config file paths relative to the remote repository root. If omitted, lefthook reads `lefthook.yml` from the remote.
+
+```yaml
+remotes:
+  - git_url: git@github.com:org/lefthook-configs
+    ref: v1.0.0
+    configs:
+      - examples/ruby-linter.yml
+      - examples/test.yml
+```
+
+#### `refetch`
+
+**Default:** `false`
+
+Force the remote config to be re-fetched on every lefthook run. Use `refetch_frequency` for less aggressive periodic re-fetching.
+
+```yaml
+remotes:
+  - git_url: https://github.com/org/lefthook-configs
+    refetch: true
+```
+
+<Warning>
+`refetch: true` overrides any value set in `refetch_frequency`.
+</Warning>
+
+#### `refetch_frequency`
+
+How often lefthook should re-fetch the remote config. Accepts `always`, `never`, or a duration string like `24h` or `30m`. When not set or set to `never`, lefthook only fetches on the first `lefthook install`.
+
+```yaml
+remotes:
+  - git_url: https://github.com/org/lefthook-configs
+    refetch_frequency: 24h
+```
+
+If the fetch fails, lefthook logs a warning and uses the last successfully downloaded config. If no cached config exists, the remote is ignored rather than causing an error.
+
+<Tip>
+Configure a `refetch_frequency` for remotes that point to a mutable branch (no `ref`, or a branch name) to keep your team's shared config up to date automatically.
+</Tip>
+
+### Multiple remotes
+
+You can pull from several remote repositories in a single config. Configs are merged in list order.
+
+```yaml
+# lefthook.yml
+
+remotes:
+  - git_url: git@github.com:org/lefthook-configs
+    ref: v1.0.0
+    configs:
+      - examples/ruby-linter.yml
+      - examples/test.yml
+  - git_url: https://github.com/org2/lefthook-configs
+    configs:
+      - lefthooks/pre_commit.yml
+      - lefthooks/post_merge.yml
+  - git_url: https://github.com/org3/lefthook-configs
+    ref: feature/new
+    configs:
+      - configs/pre-push.yml
+```
+
+### `setup` in remotes
+
+**Added in:** 2.1.2
+
+A `setup` block in a remote config lets you run preparation commands (like installing tools) before any jobs execute. Instructions support the same templates and Git argument references as `run`.
+
+When configs are merged, `setup` instructions from `lefthook-local.yml` or `extends` are **prepended**; multiple extend files append in order.
+
+```yaml
+# remote config: hooks/pre-commit.yml
+
+pre-commit:
+  setup:
+    - run: |
+        if ! command -v golangci-lint >/dev/null 2>&1; then
+          go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.10.1
+        fi
+  jobs:
+    - run: golangci-lint -- {staged_files}
+      glob: "*.go"
+```
+
+### Scripts in remote configs
+
+If a remote config references `scripts`, the script files must live in `source_dir` (default: `.lefthook/`) at the **root of the remote repository**, not your local project.
+
+## Practical example: shared team config
+
+**Scenario:** You manage multiple Ruby and Node.js services and want consistent linting rules across all of them.
+
+<Steps>
+  <Step title="Create a shared config repository">
+    Create `org/lefthook-configs` with hook configs for each language stack.
+
+    ```yaml
+    # hooks/ruby.yml in org/lefthook-configs
+
+    pre-commit:
+      jobs:
+        - name: rubocop
+          glob: "*.rb"
+          exclude:
+            - db/schema.rb
+          run: bundle exec rubocop --force-exclusion -- {staged_files}
+    ```
+
+    ```yaml
+    # hooks/node.yml in org/lefthook-configs
+
+    pre-commit:
+      jobs:
+        - name: eslint
+          glob: "*.{js,ts}"
+          run: yarn eslint {staged_files}
+    ```
+  </Step>
+  <Step title="Reference the remote in each project">
+    ```yaml
+    # lefthook.yml in your Ruby + Node project
+
+    remotes:
+      - git_url: git@github.com:org/lefthook-configs
+        ref: v1.2.0
+        configs:
+          - hooks/ruby.yml
+          - hooks/node.yml
+
+    pre-commit:
+      parallel: true
+    ```
+  </Step>
+  <Step title="Override locally as needed">
+    ```yaml
+    # lefthook-local.yml (not committed)
+
+    pre-commit:
+      jobs:
+        - name: rubocop
+          skip: true   # skip rubocop on this machine
+    ```
+  </Step>
+</Steps>
+
+## Security considerations
+
+<Warning>
+The `lefthook` executable option is deliberately excluded from remote config merging. A remote repository cannot override which binary runs your hooks. Only `lefthook-local.yml` can set this option.
+</Warning>
+
+Remote configs can define arbitrary shell commands that run on your machine. Only point `remotes` at repositories you trust and control. Use pinned `ref` values (a specific tag or commit) rather than mutable branches to avoid unexpected changes when a remote is updated.

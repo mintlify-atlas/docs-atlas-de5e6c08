@@ -1,0 +1,227 @@
+---
+title: "Skip Lefthook hooks by branch, git state, or tag name"
+description: "Disable all hooks for a single git command, skip specific jobs based on git state or branch, or exclude commands by tag at runtime."
+---
+
+Lefthook gives you several ways to skip hook execution — from disabling everything for one command to conditionally skipping individual jobs based on branch name, git state, environment variables, or tags. This page covers all of the available mechanisms and when to use each.
+
+## Disable all hooks for one command
+
+Set `LEFTHOOK=0` before any git command to skip all hooks entirely for that invocation:
+
+```bash
+LEFTHOOK=0 git commit -am "skip hooks this once"
+```
+
+This is useful when you need to make an emergency commit or when you're certain your changes don't require validation.
+
+## Skip based on git state or branch (`skip`)
+
+The `skip` option in your config tells Lefthook to skip a command, job, or entire hook under specific conditions. You can apply it at the hook level (skips everything in the hook) or at the individual command level.
+
+### Skip during merge or rebase
+
+Avoid running slow checks during an interactive rebase or merge conflict resolution:
+
+```yaml
+# lefthook.yml
+pre-commit:
+  commands:
+    lint:
+      skip:
+        - merge
+        - rebase
+      run: yarn lint
+```
+
+Use `merge-commit` to skip when the current HEAD is a merge commit (useful in `pre-push`):
+
+```yaml
+# lefthook.yml
+pre-push:
+  commands:
+    lint:
+      skip: merge-commit
+      run: yarn lint
+```
+
+### Skip for a specific branch or pattern
+
+Skip the entire hook when committing directly to `main`:
+
+```yaml
+# lefthook.yml
+pre-commit:
+  skip:
+    - ref: main
+  commands:
+    lint:
+      run: yarn lint
+    test:
+      run: yarn test
+```
+
+Glob patterns work too. Skip for all `dev/*` branches:
+
+```yaml
+# lefthook.yml
+pre-commit:
+  skip:
+    - ref: dev/*
+  commands:
+    lint:
+      run: yarn lint
+    test:
+      run: yarn test
+```
+
+### Skip based on a shell command result
+
+Skip when a shell command exits with code `0`. This lets you use environment variables, check for tool availability, or any other condition:
+
+```yaml
+# lefthook.yml
+pre-commit:
+  skip:
+    - run: test "${NO_HOOK}" -eq 1
+  commands:
+    lint:
+      run: yarn lint
+    test:
+      run: yarn test
+```
+
+You can also use it to skip a command only if a tool isn't installed:
+
+```yaml
+# lefthook.yml
+prepare-commit-msg:
+  skip:
+    - merge
+    - rebase
+  commands:
+    aiautocommit:
+      interactive: true
+      run: aiautocommit commit --output-file "{1}"
+      skip:
+        - run: "! which aiautocommit"
+```
+
+### Always skip (useful in local overrides)
+
+Set `skip: true` to unconditionally skip a command. This is most useful in `lefthook-local.yml` to disable shared commands locally:
+
+```yaml
+# lefthook-local.yml
+pre-commit:
+  commands:
+    lint:
+      skip: true
+```
+
+## Run only in certain conditions (`only`)
+
+The `only` option is the inverse of `skip` — it skips execution unless the condition is met. It accepts the same values as `skip`.
+
+Run the `pre-commit` hook only on `dev/*` branches:
+
+```yaml
+# lefthook.yml
+pre-commit:
+  only:
+    - ref: dev/*
+  commands:
+    lint:
+      run: yarn lint {staged_files}
+    test:
+      run: yarn test
+```
+
+Run a fast linter only during rebase, while skipping the normal checks:
+
+```yaml
+# lefthook.yml
+pre-commit:
+  commands:
+    lint:
+      skip: rebase
+      run: yarn lint
+    test:
+      skip: rebase
+      run: yarn test
+    lint-on-rebase:
+      only: rebase
+      run: yarn lint-quickly
+```
+
+<Note>
+`skip` takes precedence over `only`. If both conditions match, the command is skipped.
+</Note>
+
+Run the `lint` command only when pushing `main`, and skip `test` when `NO_TEST=1`:
+
+```yaml
+# lefthook.yml
+pre-push:
+  commands:
+    test:
+      run: yarn test
+      skip:
+        - run: test "$NO_TEST" -eq 1
+    lint:
+      run: yarn lint
+      only:
+        - ref: main
+```
+
+## Exclude by tags at runtime (`LEFTHOOK_EXCLUDE`)
+
+If your commands use `tags`, you can exclude them at runtime without changing config files:
+
+```bash
+LEFTHOOK_EXCLUDE=ruby,security git commit -am "skip ruby and security checks"
+```
+
+You can also exclude by the exact command name instead of (or in addition to) tags.
+
+First, tag your commands:
+
+```yaml
+# lefthook.yml
+pre-push:
+  commands:
+    packages-audit:
+      tags:
+        - frontend
+        - security
+      run: yarn audit
+    gems-audit:
+      tags:
+        - backend
+        - security
+      run: bundle audit
+```
+
+Then at runtime:
+
+```bash
+LEFTHOOK_EXCLUDE=security git push   # skips both audit commands
+LEFTHOOK_EXCLUDE=frontend git push   # skips packages-audit only
+```
+
+## Exclude tags permanently in config (`exclude_tags`)
+
+To permanently exclude certain tagged commands from a hook — without touching the shared config — add `exclude_tags` to `lefthook-local.yml`:
+
+```yaml
+# lefthook-local.yml
+pre-push:
+  exclude_tags:
+    - frontend
+```
+
+This skips all commands with the `frontend` tag every time the hook runs on your machine.
+
+<Tip>
+Use `exclude_tags` in `lefthook-local.yml` to disable frontend checks if you're a backend developer, without modifying the shared config.
+</Tip>

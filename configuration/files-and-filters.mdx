@@ -1,0 +1,325 @@
+---
+title: "File filtering, templates, and glob patterns in lefthook"
+description: "Reference for lefthook file templates, glob and file-type filters, root scoping, custom file commands, and the glob_matcher engine setting."
+---
+
+Lefthook can pass a filtered list of files to your commands at runtime. You control which files are included using built-in templates, glob patterns, file-type filters, path exclusions, and custom shell commands. This page covers all the tools available for selecting exactly the files you want.
+
+## File templates
+
+Use these placeholders in a `run` value. Lefthook substitutes each placeholder with the appropriate file list when the hook fires. If the substituted list is empty, the command is skipped automatically.
+
+| Template | Files included |
+|----------|---------------|
+| `{staged_files}` | Files staged for the current commit (`pre-commit` hook). |
+| `{push_files}` | Files committed but not yet pushed (`pre-push` hook). |
+| `{all_files}` | All files tracked by Git. |
+| `{files}` | Output of the custom [`files`](#files-job-level) command. |
+| `{cmd}` | The full `run` value itself (useful for wrapping in Docker). |
+| `{0}` | All Git hook arguments joined by a space. |
+| `{1}`, `{2}`, … | Individual Git hook arguments by position. |
+| `{lefthook_job_name}` | The name of the currently running job. |
+
+<Note>
+Command-line length is limited on every operating system. When a file list is very long, lefthook automatically splits it across multiple sequential command invocations to stay within the limit.
+</Note>
+
+### Quoting file names
+
+If your file names may contain spaces or special characters, quote the template:
+
+```yaml
+# lefthook.yml
+
+pre-commit:
+  commands:
+    lint:
+      glob: "*.js"
+      run: yarn eslint "{staged_files}"   # double-quoted
+    test:
+      glob: "*.spec.js"
+      run: yarn test '{staged_files}'     # single-quoted
+```
+
+## `glob`
+
+Filter the files passed to a template by a glob pattern. Only files matching the pattern are included. If no files remain after filtering, the command is skipped.
+
+```yaml
+# lefthook.yml
+
+pre-commit:
+  jobs:
+    - name: lint
+      run: yarn eslint {staged_files}
+      glob: "*.{js,ts,jsx,tsx}"
+```
+
+From version 1.10.10 you can also provide a list of globs:
+
+```yaml
+pre-commit:
+  jobs:
+    - run: yarn lint {staged_files}
+      glob:
+        - "*.ts"
+        - "*.js"
+```
+
+When you specify `glob` without a files template in `run`, lefthook automatically checks `{staged_files}` (for `pre-commit`) or `{push_files}` (for `pre-push`) and skips the command if no matching files are found:
+
+```yaml
+pre-commit:
+  jobs:
+    - name: lint
+      run: npm run lint   # skipped automatically if no .js files are staged
+      glob: "*.js"
+```
+
+### `glob_matcher`
+
+**Default:** `gobwas`
+
+Lefthook supports two glob-matching engines:
+
+| Engine | `**` behavior | Use when |
+|--------|--------------|----------|
+| `gobwas` (default) | Matches 1 or more directories deep. `src/**/*.js` does **not** match `src/file.js`. | Default behavior; predictable for monorepos. |
+| `doublestar` | Matches any depth including root. `**/*.js` matches `app.js`, `src/app.js`, etc. | Migrating from other tools or needing standard Bash-like glob behavior. |
+
+```yaml
+# lefthook.yml
+
+glob_matcher: doublestar
+
+pre-commit:
+  jobs:
+    - name: lint
+      run: yarn eslint {staged_files}
+      glob: "**/*.{js,ts}"
+```
+
+<Note>
+The `glob_matcher` setting applies globally to all `glob` and `exclude` patterns.
+</Note>
+
+## `exclude`
+
+A list of glob patterns for files to remove from the template substitution. If all files are excluded, the command is skipped.
+
+```yaml
+# lefthook.yml
+
+pre-commit:
+  jobs:
+    - name: lint
+      glob: "*.rb"
+      exclude:
+        - config/routes.rb
+        - config/application.rb
+        - config/initializers/*.rb
+        - spec/rails_helper.rb
+      run: bundle exec rubocop --force-exclusion -- {staged_files}
+```
+
+You can also set `exclude` at the hook level to filter files for every command in the hook:
+
+```yaml
+pre-commit:
+  exclude:
+    - "*/application.rb"
+  jobs:
+    - name: lint
+      run: bundle exec rubocop  # skipped if only application.rb is staged
+```
+
+<Note>
+Exclude patterns respect the `glob_matcher` setting. The behavior of `**` differs between `gobwas` and `doublestar`.
+</Note>
+
+## `files` (job-level)
+
+A shell command whose output provides the file list for `{files}` template substitution. If the command returns an empty result, the job is skipped.
+
+```yaml
+# lefthook.yml
+
+pre-push:
+  commands:
+    stylelint:
+      tags:
+        - frontend
+        - style
+      files: git diff --name-only master
+      glob: "*.js"
+      run: yarn stylelint {files}
+```
+
+You can call any executable, including your own scripts:
+
+```yaml
+pre-push:
+  commands:
+    rubocop:
+      tags: backend
+      glob: "**/*.rb"
+      files: node ./lefthook-scripts/ls-files.js
+      run: bundle exec rubocop --force-exclusion --parallel -- {files}
+```
+
+A job-level `files` command overrides the [hook-level `files`](#files-hook-level) setting for that specific job.
+
+## `files` (hook-level)
+
+Set a default file command for all jobs in the hook. Individual jobs can override this with their own `files` option.
+
+```yaml
+# lefthook.yml
+
+pre-commit:
+  files: git diff --name-only master
+  commands:
+    lint:
+      run: yarn lint {files}
+    test:
+      run: yarn test {files}
+```
+
+## `file_types`
+
+Filter files by type rather than by name. Lefthook inspects file metadata and MIME type to apply the filter.
+
+### Special types
+
+| Type | Matches |
+|------|---------|
+| `text` | Any file containing text. Symlinks not followed. |
+| `binary` | Any file containing non-text bytes. Symlinks not followed. |
+| `executable` | Files with the executable bit set. Symlinks not followed. |
+| `not executable` | Files without executable bits. Symlinks included. |
+| `symlink` | Symbolic link files. |
+| `not symlink` | All non-symlink files. |
+
+### MIME types
+
+Common supported MIME types include `text/html`, `text/xml`, `text/javascript`, `text/x-php`, `text/x-lua`, `text/x-perl`, `text/x-python`, `text/x-shellscript`, `text/x-sh`, and `application/json`. See the [mimetype library](https://github.com/gabriel-vasile/mimetype/blob/v1.4.11/supported_mimes.md) for the full list.
+
+**Logic rules:** Special types (`text`, `binary`, `executable`, etc.) are combined with AND. MIME types are combined with OR.
+
+```yaml
+# lefthook.yml
+
+pre-commit:
+  commands:
+    lint-code:
+      run: yarn lint {staged_files}
+      file_types: text
+    check-hex-codes:
+      run: yarn check-hex {staged_files}
+      file_types: binary
+```
+
+Skip symlinks:
+
+```yaml
+pre-commit:
+  commands:
+    lint:
+      run: yarn lint --fix {staged_files}
+      file_types:
+        - not symlink
+```
+
+Check typos in scripts across multiple languages:
+
+```yaml
+pre-commit:
+  jobs:
+    - run: typos -w -- {staged_files}
+      file_types:
+        - text/x-perl
+        - text/x-python
+        - text/x-php
+        - text/x-lua
+        - text/x-sh
+```
+
+## `root`
+
+Change the working directory for the command. For `pre-push` and `pre-commit` hooks, `root` also filters the file list: if all staged or pushed files fall outside the `root`, the command is skipped.
+
+```yaml
+# lefthook.yml
+
+pre-commit:
+  commands:
+    lint:
+      root: "client/"
+      glob: "*.{js,ts}"
+      run: yarn eslint --fix {staged_files} && git add {staged_files}
+```
+
+<Note>
+Glob patterns are always evaluated from the actual Git repository root. The `root` option does not affect which files match a glob—it only changes the working directory for command execution and filters which files are passed through.
+</Note>
+
+## Custom `{cmd}` template
+
+The `{cmd}` template expands to the entire `run` value of the command. This is useful when you want to wrap a command locally—for example, to run it inside Docker—without modifying the shared config.
+
+```yaml
+# lefthook.yml
+
+pre-commit:
+  commands:
+    lint:
+      run: yarn lint
+```
+
+```yaml
+# lefthook-local.yml
+
+pre-commit:
+  commands:
+    lint:
+      run: docker run -it --rm my-image {cmd}
+```
+
+## `templates` (custom named templates)
+
+**Added in:** 1.10.8
+
+Define reusable named substitution strings at the top level of your config. Reference them in any `run` value with `{name}`. Override them in `lefthook-local.yml` to customize behavior per developer without duplicating job definitions.
+
+```yaml
+# lefthook.yml
+
+templates:
+  dip:   # empty by default
+
+pre-commit:
+  jobs:
+    - run: {dip} bundle exec rubocop -- {staged_files}
+```
+
+```yaml
+# lefthook-local.yml
+
+templates:
+  dip: dip   # prepends `dip` to every command that uses {dip}
+```
+
+Reduce repetition with a shared wrapper:
+
+```yaml
+# lefthook.yml
+
+templates:
+  wrapper: docker-compose run --rm -v $(pwd):/app service
+
+pre-commit:
+  jobs:
+    - run: {wrapper} yarn format
+    - run: {wrapper} yarn lint
+    - run: {wrapper} yarn test
+```

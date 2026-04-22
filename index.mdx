@@ -1,97 +1,91 @@
 ---
-title: "Introduction"
-description: "Welcome to the new home for your documentation"
+title: "Lefthook: fast, parallel Git hooks manager for any project"
+description: "Lefthook is a single-binary Git hooks manager that runs commands in parallel, filters files with globs, and supports shared configs across teams."
 ---
 
-## Setting up
+Lefthook is a fast, powerful Git hooks manager written in Go. It lets you configure all your pre-commit checks, linters, and custom scripts in a single `lefthook.yml` file, then installs them into your repository's `.git/hooks/` directory with one command. Whether you work with Node.js, Ruby, Python, or any other language, Lefthook runs in any environment without additional runtime dependencies.
 
-Get your documentation site up and running in minutes.
-
-<Card
-  title="Start here"
-  icon="rocket"
-  href="/quickstart"
-  horizontal
->
-  Follow our three step quickstart guide.
-</Card>
-
-## Make it yours
-
-Design a docs site that looks great and empowers your users.
-
-<Columns cols={2}>
-  <Card
-    title="Edit locally"
-    icon="pen-to-square"
-    href="/development"
-  >
-    Edit your docs locally and preview them in real time.
+<CardGroup cols={2}>
+  <Card title="Installation" icon="download" href="/installation">
+    Install Lefthook via npm, gem, pipx, Homebrew, or download the binary directly.
   </Card>
-  <Card
-    title="Customize your site"
-    icon="palette"
-    href="/essentials/settings"
-  >
-    Customize the design and colors of your site to match your brand.
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Configure your first Git hook and get up and running in under 5 minutes.
   </Card>
-    <Card
-    title="Set up navigation"
-    icon="map"
-    href="/essentials/navigation"
-  >
-    Organize your docs to help users find what they need and succeed with your product.
+  <Card title="Configuration reference" icon="sliders" href="/configuration/overview">
+    Explore all `lefthook.yml` options: jobs, filters, scripts, remotes, and more.
   </Card>
-  <Card
-    title="API documentation"
-    icon="terminal"
-    href="/api-reference/introduction"
-  >
-    Auto-generate API documentation from OpenAPI specifications.
+  <Card title="CLI reference" icon="terminal" href="/cli/install">
+    Every Lefthook command documented with flags, examples, and usage patterns.
   </Card>
-</Columns>
+</CardGroup>
 
-## Create beautiful pages
+## Why Lefthook?
 
-Everything you need to create world-class documentation.
+Lefthook is built for teams that want reliable, fast Git hooks without the overhead of language-specific hook managers.
 
-<Columns cols={2}>
-  <Card
-    title="Write with MDX"
-    icon="pen-fancy"
-    href="/essentials/markdown"
-  >
-    Use MDX to style your docs pages.
+<CardGroup cols={2}>
+  <Card title="Parallel execution" icon="bolt">
+    Run multiple linters and checks simultaneously — hooks complete faster than sequential runners.
   </Card>
-  <Card
-    title="Code samples"
-    icon="code"
-    href="/essentials/code"
-  >
-    Add sample code to demonstrate how to use your product.
+  <Card title="Flexible file filters" icon="filter">
+    Pass `{staged_files}`, `{all_files}`, or custom glob-filtered lists to your commands.
   </Card>
-  <Card
-    title="Images"
-    icon="image"
-    href="/essentials/images"
-  >
-    Display images and other media.
+  <Card title="Shared configurations" icon="share-nodes">
+    Pull hook configs from remote git repositories so your entire team stays in sync.
   </Card>
-  <Card
-    title="Reusable snippets"
-    icon="recycle"
-    href="/essentials/reusable-snippets"
-  >
-    Write once and reuse across your docs.
+  <Card title="Zero runtime dependencies" icon="cube">
+    A single static binary works in any environment — CI, Docker, local machines.
   </Card>
-</Columns>
+</CardGroup>
 
-## Need inspiration?
+## How it works
 
-<Card
-  title="See complete examples"
-  icon="stars"
-  href="https://mintlify.com/customers"
->
-  Browse our showcase of exceptional documentation sites.
-</Card>
+<Steps>
+  <Step title="Create your configuration">
+    Add a `lefthook.yml` file to your project root and define which commands to run for each Git hook.
+
+    ```yaml lefthook.yml
+    pre-commit:
+      parallel: true
+      jobs:
+        - run: yarn eslint --fix "{staged_files}"
+          glob: "*.{js,ts,jsx,tsx}"
+          stage_fixed: true
+
+        - run: bundle exec rubocop --force-exclusion -- {staged_files}
+          glob: "*.rb"
+    ```
+  </Step>
+  <Step title="Install the hooks">
+    Run `lefthook install` once. Lefthook writes scripts to `.git/hooks/` that call `lefthook run` automatically on each Git operation.
+
+    ```bash
+    lefthook install
+    ```
+  </Step>
+  <Step title="Commit with confidence">
+    Your hooks now run automatically. Lefthook checks your staged files, runs jobs in parallel, and blocks the commit if anything fails.
+
+    ```bash
+    git add -A && git commit -m "feat: add new feature"
+    ```
+  </Step>
+</Steps>
+
+## Explore the docs
+
+<CardGroup cols={2}>
+  <Card title="Local config overrides" icon="user-gear" href="/guides/local-config">
+    Use `lefthook-local.yml` to customize hooks for your machine without affecting teammates.
+  </Card>
+  <Card title="Skip hooks selectively" icon="forward" href="/guides/skipping-hooks">
+    Learn how to skip hooks for emergency commits or specific environments.
+  </Card>
+  <Card title="Share configs via remotes" icon="cloud-arrow-down" href="/guides/remotes-sharing">
+    Pull shared hook configurations from a central git repository.
+  </Card>
+  <Card title="Real-world examples" icon="book-open" href="/guides/examples">
+    See Lefthook configurations for commitlint, linters, custom filters, and more.
+  </Card>
+</CardGroup>
